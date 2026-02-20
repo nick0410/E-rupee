@@ -8,36 +8,39 @@ datasource db {
 }
 
 model User {
-  id         Int          @id @default(autoincrement())
-  name       String
-  email      String       @unique
-  phone      String       @unique
-  password   String
-  state      String
-  pan        String?
+  id            Int           @id @default(autoincrement())
+  name          String
+  email         String        @unique
+  phone         String        @unique
+  password      String
+  state         String
+  pan           String?
+  walletAddress String?       @unique
   
-  Investment Investment[]
-  Wallet     Wallet?
+  Investment    Investment[]
+  Wallet        Wallet?
+  Transaction   Transaction[]
 }
 
 model Wallet {
-  id                                           Int           @id @default(autoincrement())
-  balance                                      Float         @default(0)
-  userId                                       Int           @unique
-  Transaction_Transaction_fromWalletIdToWallet Transaction[] @relation("Transaction_fromWalletIdToWallet")
-  Transaction_Transaction_toWalletIdToWallet   Transaction[] @relation("Transaction_toWalletIdToWallet")
-  User                                         User          @relation(fields: [userId], references: [id])
+  id      Int   @id @default(autoincrement())
+  balance Float @default(0)
+  userId  Int   @unique
+  User    User  @relation(fields: [userId], references: [id])
 }
 
 model Transaction {
-  id                                      Int      @id @default(autoincrement())
-  amount                                  Float
-  status                                  String
-  createdAt                               DateTime @default(now())
-  fromWalletId                            Int
-  toWalletId                              Int
-  Wallet_Transaction_fromWalletIdToWallet Wallet   @relation("Transaction_fromWalletIdToWallet", fields: [fromWalletId], references: [id])
-  Wallet_Transaction_toWalletIdToWallet   Wallet   @relation("Transaction_toWalletIdToWallet", fields: [toWalletId], references: [id])
+  id           Int      @id @default(autoincrement())
+  amount       Float
+  status       String   @default("completed")
+  createdAt    DateTime @default(now())
+  fromAddress  String   @default("")
+  toAddress    String   @default("")
+  type         String   @default("P2P")
+  txHash       String   @default("")
+  note         String   @default("")
+  userId       Int
+  User         User     @relation(fields: [userId], references: [id])
 }
 
 model Investment {
