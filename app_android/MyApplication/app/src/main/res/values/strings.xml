@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">My Application</string>
+    <string name="login_title">eRupeeX Login</string>
+    <string name="login_subtitle">Enter your credentials to continue</string>
+    <string name="email_label">Email</string>
+    <string name="password_label">Password</string>
+    <string name="login_button">Login</string>
+    <string name="forgot_password">Forgot Password?</string>
+</resources>
