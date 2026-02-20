@@ -40,7 +40,7 @@ prisma-generate:
 	cd E-rupee\erupee-backend && npx prisma generate
 
 prisma-migrate:
-	cd E-rupee\erupee-backend && npx prisma migrate dev
+	cd E-rupee\erupee-backend && npx prisma migrate deploy
 
 prisma-setup: prisma-generate prisma-migrate
 	@echo ✅  Prisma ready.
@@ -131,3 +131,4 @@ help:
         start-node deploy-contracts \
         start-cbdc-backend start-erupee-backend start-dashboard start-web \
         test-contracts test-backend test-all help
+
