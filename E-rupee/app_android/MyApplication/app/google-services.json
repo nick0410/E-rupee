@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "215534708702",
+    "project_id": "erupeex",
+    "storage_bucket": "erupeex.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:215534708702:android:47832921c3492472e8df4f",
+        "android_client_info": {
+          "package_name": "com.example.myapplication"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC-5X8-x3mGUCJ84XbfXMhroMco-54wyYg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

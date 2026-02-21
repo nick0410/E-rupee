@@ -1,0 +1,8 @@
+{
+  "branches": [
+    "main",
+    "hotfix/*",
+    { "name": "release-v\\d+\\.\\d+\\.\\d+", "prerelease": true }
+  ],
+  "plugins": ["semantic-release-export-data"]
+}
