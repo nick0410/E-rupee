@@ -1,5 +1,8 @@
 node_modules
-.env
 coverage
 artifacts
 cache
+
+# Environment — keep example, ignore real secrets
+.env
+!.env.example
