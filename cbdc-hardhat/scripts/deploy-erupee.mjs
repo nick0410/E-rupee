@@ -1,6 +1,10 @@
 import { ethers } from "ethers";
 import fs from "fs";
 import path from "path";
+import dotenv from "dotenv";
+
+const envPath = path.resolve(process.cwd(), ".env");
+dotenv.config({ path: envPath });
 
 async function main() {
   const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:8545");
@@ -14,7 +18,18 @@ async function main() {
 
   const erup = await factory.deploy(ethers.parseUnits("1000000", 18));
   await erup.waitForDeployment();
-  console.log("eRupee deployed to:", erup.target ?? erup.address);
+  const address = erup.target ?? erup.address;
+  console.log("eRupee deployed to:", address);
+
+  // Auto-write CONTRACT_ADDRESS back into .env so backend picks it up
+  let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
+  if (envContent.match(/^CONTRACT_ADDRESS=.*/m)) {
+    envContent = envContent.replace(/^CONTRACT_ADDRESS=.*/m, `CONTRACT_ADDRESS=${address}`);
+  } else {
+    envContent += `\nCONTRACT_ADDRESS=${address}\n`;
+  }
+  fs.writeFileSync(envPath, envContent);
+  console.log("✅  CONTRACT_ADDRESS written to .env:", address);
 }
 
 main().catch((error) => {
