@@ -1,4 +1,4 @@
-# e₹ — Digital Rupee (CBDC) Platform
+# e-Rupee ? Digital Rupee (CBDC) Platform
 
 A full-stack Central Bank Digital Currency (CBDC) simulation built on Ethereum (Hardhat), with a REST API backend, a React dashboard, and a Next.js web frontend.
 
@@ -23,7 +23,7 @@ Make sure these are installed on your machine before proceeding:
 - [Node.js](https://nodejs.org/) v18 or higher
 - [npm](https://www.npmjs.com/) v9 or higher
 - [Git](https://git-scm.com/)
-- [GNU Make](https://gnuwin32.sourceforge.net/packages/make.htm) (Windows: install via [GnuWin32](https://gnuwin32.sourceforge.net/packages/make.htm) or `winget install GnuWin32.Make`)
+- [GNU Make](https://gnuwin32.sourceforge.net/packages/make.htm) (Windows: install via GnuWin32 or `winget install GnuWin32.Make`)
 
 ---
 
@@ -36,17 +36,17 @@ git clone https://github.com/nick0410/E-rupee.git
 cd E-rupee
 ```
 
-### 2. Configure environment variables
+### 2. Add your Database URL
 
-Before running `make`, open `erupee-backend/.env` (created automatically in step 3) and add your **Neon DB** connection string:
+Open `erupee-backend/.env` (auto-created in step 3) and fill in your Neon DB connection string:
 
 ```
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require
 ```
 
-> Get this from your [Neon console](https://console.neon.tech) → your project → Connection string.
+Get this from your [Neon console](https://console.neon.tech) under Connection String.
 
-All other `.env` files are pre-filled with working local defaults and require no changes for local development.
+All other `.env` files are pre-filled with local defaults and need no changes.
 
 ### 3. Run everything
 
@@ -81,48 +81,48 @@ This single command will:
 ## Useful Make Commands
 
 ```bash
-make                  # Install + compile + launch everything (default)
-make stop             # Kill all running services
-make install-all      # Install dependencies only
+make                   # Install + compile + launch everything (default)
+make stop              # Kill all running services
+make install-all       # Install dependencies only
 make compile-contracts # Recompile Solidity contracts
 make deploy-contracts  # Redeploy contracts to local node
-make prisma-setup     # Regenerate Prisma client + run migrations
-make test-all         # Run all tests
-make help             # Show all available commands
+make prisma-setup      # Regenerate Prisma client + run migrations
+make test-all          # Run all tests
+make help              # Show all available commands
 ```
 
 ---
 
 ## Environment Variables Reference
 
-### `cbdc-hardhat/.env`
+### cbdc-hardhat/.env
 
 | Variable | Description | Default |
 |---|---|---|
-| `RPC_URL` | Hardhat node RPC URL | `http://127.0.0.1:8545` |
+| `RPC_URL` | Hardhat node RPC URL | http://127.0.0.1:8545 |
 | `PRIVATE_KEY` | Deployer wallet private key | Hardhat account #0 |
-| `CONTRACT_ADDRESS` | Auto-filled after deploy | _(auto)_ |
+| `CONTRACT_ADDRESS` | Auto-filled after deploy | (auto) |
 
-### `erupee-backend/.env`
+### erupee-backend/.env
 
 | Variable | Description |
 |---|---|
-| `DATABASE_URL` | PostgreSQL connection string (Neon DB) — **required** |
+| `DATABASE_URL` | PostgreSQL connection string (Neon DB) ? **required** |
 | `JWT_SECRET` | Secret key for JWT auth tokens |
 | `PORT` | Server port (default: 8000) |
 
-### `erupee-web/.env.local`
+### erupee-web/.env.local
 
 | Variable | Description | Default |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | eRupee backend URL | `http://127.0.0.1:8000` |
+| `NEXT_PUBLIC_API_URL` | eRupee backend URL | http://127.0.0.1:8000 |
 
-### `erupee-dashboard/.env`
+### erupee-dashboard/.env
 
 | Variable | Description | Default |
 |---|---|---|
-| `VITE_API_URL` | eRupee backend URL | `http://127.0.0.1:8000` |
-| `VITE_RPC_URL` | Hardhat RPC URL | `http://127.0.0.1:8545` |
+| `VITE_API_URL` | eRupee backend URL | http://127.0.0.1:8000 |
+| `VITE_RPC_URL` | Hardhat RPC URL | http://127.0.0.1:8545 |
 
 ---
 
@@ -130,23 +130,23 @@ make help             # Show all available commands
 
 ```
 E-rupee/
-├── Makefile                  # One-command setup & launch
-├── cbdc-hardhat/             # Smart contracts + Hardhat + CBDC API
-│   ├── contracts/            # Solidity source files
-│   ├── scripts/              # Deploy scripts
-│   ├── backend/              # Express API for contract interaction
-│   └── test/                 # Contract tests
-├── erupee-backend/           # User auth & data API (Express + Prisma)
-│   └── prisma/               # DB schema and migrations
-├── erupee-dashboard/         # Admin dashboard (React + Vite)
-├── erupee-web/               # User web app (Next.js)
-└── app_android/              # Android app (Kotlin)
++-- Makefile                  # One-command setup & launch
++-- cbdc-hardhat/             # Smart contracts + Hardhat + CBDC API
+|   +-- contracts/            # Solidity source files
+|   +-- scripts/              # Deploy scripts
+|   +-- backend/              # Express API for contract interaction
+|   +-- test/                 # Contract tests
++-- erupee-backend/           # User auth & data API (Express + Prisma)
+|   +-- prisma/               # DB schema and migrations
++-- erupee-dashboard/         # Admin dashboard (React + Vite)
++-- erupee-web/               # User web app (Next.js)
++-- app_android/              # Android app (Kotlin)
 ```
 
 ---
 
 ## Notes
 
-- `artifacts/`, `cache/`, and `node_modules/` are **not committed** to git. They are generated locally by `make`.
+- `artifacts/`, `cache/`, and `node_modules/` are not committed to git. They are generated locally by `make`.
 - Never commit your `.env` files. They are gitignored. Only `.env.example` files are tracked.
 - The smart contract address is automatically written to `cbdc-hardhat/.env` after each deploy.
