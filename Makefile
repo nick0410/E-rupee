@@ -5,7 +5,8 @@
 # Long-running servers open in their own terminal windows.
 # ──────────────────────────────────────────────────────────
 
-SHELL = cmd.exe
+SHELL := cmd.exe
+.SHELLFLAGS := /c
 
 # ─── Default target — does EVERYTHING ────────────────────
 
@@ -16,13 +17,22 @@ all: install-all prisma-setup compile-contracts launch-all
 	@echo ========================================
 	@echo.
 
+# ─── 0. Copy .env.example → .env if not present ────────
+
+setup-env:
+	@if not exist cbdc-hardhat\.env        (copy cbdc-hardhat\.env.example        cbdc-hardhat\.env        >nul && echo Created cbdc-hardhat\.env from .env.example)
+	@if not exist erupee-backend\.env      (copy erupee-backend\.env.example      erupee-backend\.env      >nul && echo Created erupee-backend\.env from .env.example)
+	@if not exist erupee-dashboard\.env    (copy erupee-dashboard\.env.example    erupee-dashboard\.env    >nul && echo Created erupee-dashboard\.env from .env.example)
+	@if not exist erupee-web\.env.local    (copy erupee-web\.env.example          erupee-web\.env.local    >nul && echo Created erupee-web\.env.local from .env.example)
+	@echo ✅  Environment files ready.
+
 # ─── 1. Install all dependencies ────────────────────────
 
 install-hardhat:
 	cd cbdc-hardhat && npm install
 
 install-backend:
-	cd E-rupee\erupee-backend && npm install
+	cd erupee-backend && npm install
 
 install-dashboard:
 	cd erupee-dashboard && npm install
@@ -36,11 +46,17 @@ install-all: install-hardhat install-backend install-dashboard install-web
 # ─── 2. Prisma (erupee-backend database) ────────────────
 
 prisma-generate:
-	-cmd /c "rmdir /s /q E-rupee\erupee-backend\node_modules\.prisma 2>nul"
-	cd E-rupee\erupee-backend && npx prisma generate
+	@echo Stopping any Node processes that may lock Prisma engine files...
+	-taskkill /F /IM node.exe /T 2>nul
+	-cmd /c "ping 127.0.0.1 -n 3 >nul"
+	-cmd /c "del /F /Q erupee-backend\node_modules\.prisma\client\query_engine-windows.dll.node 2>nul"
+	-cmd /c "rmdir /s /q erupee-backend\node_modules\.prisma 2>nul"
+	cd erupee-backend && npx prisma generate
 
 prisma-migrate:
-	cd E-rupee\erupee-backend && npx prisma migrate deploy
+	@echo 🔄  Waking up Neon DB (free tier may be suspended)...
+	-cd erupee-backend && npx prisma db execute --stdin < nul 2>nul
+	cd erupee-backend && npx prisma migrate deploy
 
 prisma-setup: prisma-generate prisma-migrate
 	@echo ✅  Prisma ready.
@@ -64,7 +80,7 @@ launch-all:
 	@echo 🚀  Starting CBDC backend...
 	cmd /c start "" /d "cbdc-hardhat" cmd /k "node backend/server.js"
 	@echo 🚀  Starting eRupee backend (Express + Prisma)...
-	cmd /c start "" /d "E-rupee\erupee-backend" cmd /k "npm run dev"
+	cmd /c start "" /d "erupee-backend" cmd /k "npm run dev"
 	@echo 🚀  Starting Dashboard (Vite)...
 	cmd /c start "" /d "erupee-dashboard" cmd /k "npm run dev"
 	@echo 🚀  Starting Web frontend (Next.js)...
@@ -83,7 +99,7 @@ start-cbdc-backend:
 	cd cbdc-hardhat && node backend/server.js
 
 start-erupee-backend:
-	cd E-rupee\erupee-backend && npm run dev
+	cd erupee-backend && npm run dev
 
 start-dashboard:
 	cd erupee-dashboard && npm run dev
@@ -125,10 +141,9 @@ help:
 	@echo   make help          Show this message
 	@echo.
 
-.PHONY: all install-hardhat install-backend install-dashboard install-web install-all \
+.PHONY: all setup-env install-hardhat install-backend install-dashboard install-web install-all \
         prisma-generate prisma-migrate prisma-setup \
         compile-contracts launch-all \
         start-node deploy-contracts \
         start-cbdc-backend start-erupee-backend start-dashboard start-web \
         test-contracts test-backend test-all help
-
