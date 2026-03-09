@@ -1,19 +1,13 @@
-"use client";
-
-import { useEffect } from "react";
 import "./globals.css";
-import { initPrivacyProtection } from "@/utils/privacyProtection";
-import WatermarkOverlay from "@/components/WatermarkOverlay";
+import dynamic from "next/dynamic";
+
+const WatermarkOverlay = dynamic(() => import("@/components/WatermarkOverlay"), { ssr: false });
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  useEffect(() => {
-    initPrivacyProtection();
-  }, []);
-
   return (
     <html lang="en">
       <body className="min-h-screen">
