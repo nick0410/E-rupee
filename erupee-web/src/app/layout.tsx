@@ -1,19 +1,25 @@
-import type { Metadata } from "next";
-import "./globals.css";
+"use client";
 
-export const metadata: Metadata = {
-  title: "eRupeeX — Digital Currency Platform",
-  description: "Your Digital Currency Platform powered by Blockchain",
-};
+import { useEffect } from "react";
+import "./globals.css";
+import { initPrivacyProtection } from "@/utils/privacyProtection";
+import WatermarkOverlay from "@/components/WatermarkOverlay";
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  useEffect(() => {
+    initPrivacyProtection();
+  }, []);
+
   return (
     <html lang="en">
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-screen">
+        <WatermarkOverlay />
+        {children}
+      </body>
     </html>
   );
 }

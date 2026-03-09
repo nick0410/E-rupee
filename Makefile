@@ -5,11 +5,12 @@
 # Long-running servers open in their own terminal windows.
 # ──────────────────────────────────────────────────────────
 
-SHELL = cmd.exe
+SHELL := cmd.exe
+.SHELLFLAGS := /c
 
 # ─── Default target — does EVERYTHING ────────────────────
 
-all: setup-env install-all prisma-setup compile-contracts launch-all
+all: install-all prisma-setup compile-contracts launch-all
 	@echo.
 	@echo ========================================
 	@echo   E-Rupee is fully up and running!
@@ -146,4 +147,3 @@ help:
         start-node deploy-contracts \
         start-cbdc-backend start-erupee-backend start-dashboard start-web \
         test-contracts test-backend test-all help
-
