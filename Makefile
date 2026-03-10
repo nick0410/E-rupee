@@ -146,4 +146,4 @@ help:
         compile-contracts launch-all \
         start-node deploy-contracts \
         start-cbdc-backend start-erupee-backend start-dashboard start-web \
-test-contracts test-backend test-all help
+        test-contracts test-backend test-all help
