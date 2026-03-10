@@ -3,28 +3,53 @@
 @tailwind utilities;
 
 /* ── Theme variables ────────────────────────────── */
-:root, .dark {
+:root,
+.dark {
   --bg-primary: #060A13;
   --bg-secondary: #0A0F1E;
-  --bg-card: #111827cc;
+  --bg-card: rgba(17, 24, 39, 0.80);
   --bg-surface: #0B1120;
   --bg-input: rgba(30, 41, 59, 0.5);
   --border-color: rgba(30, 41, 59, 0.6);
   --text-primary: #ffffff;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
+  --bg-row-hover: rgba(148, 163, 184, 0.08);
+  --bg-glass: rgba(255, 255, 255, 0.03);
+  --border-glass: rgba(255, 255, 255, 0.06);
+  --text-heading: #ffffff;
+  --text-body: #94a3b8;
+  --text-dim: #64748b;
+  --bg-tx-row: rgba(30, 41, 59, 0.3);
+  --border-tx-row: rgba(51, 65, 85, 0.2);
+  --bg-refresh-btn: rgba(30, 41, 59, 0.6);
+  --border-refresh-btn: rgba(51, 65, 85, 0.3);
+  --text-refresh-btn: #cbd5e1;
+  --bg-system-icon-btn: rgba(30, 41, 59, 0.5);
 }
 
 .light {
   --bg-primary: #f8fafc;
   --bg-secondary: #ffffff;
-  --bg-card: rgba(255, 255, 255, 0.9);
+  --bg-card: rgba(255, 255, 255, 0.90);
   --bg-surface: #f1f5f9;
   --bg-input: rgba(241, 245, 249, 0.8);
   --border-color: rgba(203, 213, 225, 0.6);
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #94a3b8;
+  --bg-row-hover: rgba(203, 213, 225, 0.35);
+  --bg-glass: rgba(255, 255, 255, 0.70);
+  --border-glass: rgba(203, 213, 225, 0.50);
+  --text-heading: #0f172a;
+  --text-body: #475569;
+  --text-dim: #94a3b8;
+  --bg-tx-row: rgba(241, 245, 249, 0.8);
+  --border-tx-row: rgba(203, 213, 225, 0.4);
+  --bg-refresh-btn: rgba(241, 245, 249, 0.8);
+  --border-refresh-btn: rgba(203, 213, 225, 0.5);
+  --text-refresh-btn: #475569;
+  --bg-system-icon-btn: rgba(241, 245, 249, 0.8);
 }
 
 * {
@@ -34,7 +59,7 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--bg-primary);
@@ -43,13 +68,33 @@ body {
 }
 
 /* Custom animation delays */
-.delay-100 { animation-delay: 0.1s; }
-.delay-200 { animation-delay: 0.2s; }
-.delay-300 { animation-delay: 0.3s; }
-.delay-400 { animation-delay: 0.4s; }
-.delay-500 { animation-delay: 0.5s; }
-.delay-600 { animation-delay: 0.6s; }
-.delay-700 { animation-delay: 0.7s; }
+.delay-100 {
+  animation-delay: 0.1s;
+}
+
+.delay-200 {
+  animation-delay: 0.2s;
+}
+
+.delay-300 {
+  animation-delay: 0.3s;
+}
+
+.delay-400 {
+  animation-delay: 0.4s;
+}
+
+.delay-500 {
+  animation-delay: 0.5s;
+}
+
+.delay-600 {
+  animation-delay: 0.6s;
+}
+
+.delay-700 {
+  animation-delay: 0.7s;
+}
 
 /* Fill mode for all animations */
 .animate-fade-in,
@@ -65,28 +110,48 @@ body {
   width: 5px;
   height: 5px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   background: rgba(59, 130, 246, 0.2);
   border-radius: 10px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(59, 130, 246, 0.4);
 }
 
 /* Input focus ring */
-input:focus, select:focus, textarea:focus {
+input:focus,
+select:focus,
+textarea:focus {
   outline: none;
 }
 
 /* Card component base */
 .card {
-  @apply bg-[#111827]/80 border border-slate-800/60 rounded-xl backdrop-blur-sm;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 0.4s ease, border-color 0.4s ease, box-shadow 0.3s ease;
 }
+
 .card-hover {
-  @apply card transition-all duration-300 hover:border-slate-700/60 hover:shadow-lg hover:shadow-blue-500/5;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 0.4s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card-hover:hover {
+  box-shadow: 0 10px 30px rgba(59, 130, 246, 0.08);
 }
 
 /* Stat card glowing border on hover */
@@ -99,25 +164,41 @@ input:focus, select:focus, textarea:focus {
   animation: barGrow 0.8s ease-out forwards;
   transform-origin: bottom;
 }
+
 @keyframes barGrow {
-  from { transform: scaleY(0); }
-  to { transform: scaleY(1); }
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
 }
 
 /* Pulse ring for live indicators */
 .pulse-ring {
   animation: pulseRing 2s ease-out infinite;
 }
+
 @keyframes pulseRing {
-  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
-  70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
 }
 
 /* Tab active underline */
 .tab-active {
   position: relative;
 }
+
 .tab-active::after {
   content: '';
   position: absolute;
@@ -131,9 +212,17 @@ input:focus, select:focus, textarea:focus {
 
 /* Number ticker animation */
 @keyframes countUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
+
 .number-animate {
   animation: countUp 0.5s ease-out forwards;
 }
@@ -148,10 +237,122 @@ input:focus, select:focus, textarea:focus {
 
 /* Table row hover */
 .table-row-hover {
-  @apply transition-colors duration-150 hover:bg-slate-800/40;
+  transition: background-color 0.15s ease;
+}
+
+.table-row-hover:hover {
+  background-color: var(--bg-row-hover);
 }
 
 /* Glass effect */
 .glass {
-  @apply bg-white/[0.03] backdrop-blur-xl border border-white/[0.06];
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glass);
+  transition: background 0.4s ease, border-color 0.4s ease;
+}
+
+/* ── Global Light-mode overrides ──────────────────────────────────────
+   These remap hardcoded dark-only Tailwind utility classes so that pages
+   that use text-white / bg-slate-800 etc. still look correct in light mode
+   without needing per-component useTheme refactors.
+──────────────────────────────────────────────────────────────────────── */
+
+/* text-white → near-black heading in light */
+.light .text-white {
+  color: #0f172a;
+}
+
+/* text-slate-300 → readable medium-dark in light */
+.light .text-slate-300 {
+  color: #334155;
+}
+
+/* text-slate-400 → readable mid-grey in light (already okay but bump darker) */
+.light .text-slate-400 {
+  color: #475569;
+}
+
+/* text-slate-500 → slightly lighter grey, still readable */
+.light .text-slate-500 {
+  color: #64748b;
+}
+
+/* text-slate-600 → less muted in light */
+.light .text-slate-600 {
+  color: #94a3b8;
+}
+
+/* Dark surface backgrounds → light surfaces */
+.light .bg-slate-800\/60,
+.light .bg-slate-800\/40,
+.light .bg-slate-800\/30,
+.light .bg-slate-800\/80 {
+  background-color: rgba(241, 245, 249, 0.85) !important;
+}
+
+.light .bg-slate-900\/80,
+.light .bg-slate-900\/60 {
+  background-color: rgba(248, 250, 252, 0.9) !important;
+}
+
+/* Dark input fields */
+.light input.bg-slate-800\/60,
+.light input.bg-slate-800\/80,
+.light textarea.bg-slate-800\/60,
+.light textarea.bg-slate-800\/80 {
+  background-color: #ffffff !important;
+  color: #0f172a;
+  border-color: rgba(203, 213, 225, 0.7) !important;
+}
+
+/* Dark borders → light borders */
+.light .border-slate-700\/30,
+.light .border-slate-700\/40,
+.light .border-slate-700\/50,
+.light .border-slate-700\/60,
+.light .border-slate-800\/60,
+.light .border-slate-800\/40,
+.light .border-slate-800\/30 {
+  border-color: rgba(203, 213, 225, 0.55) !important;
+}
+
+/* hover:bg-slate-800\/20 — row hovers in light */
+.light .hover\:bg-slate-800\/20:hover {
+  background-color: rgba(226, 232, 240, 0.6) !important;
+}
+
+.light .hover\:bg-slate-800\/30:hover {
+  background-color: rgba(226, 232, 240, 0.7) !important;
+}
+
+/* bg-slate-800\/40 block/section surfaces in cards */
+.light .bg-slate-800\/40 {
+  background-color: rgba(241, 245, 249, 0.9) !important;
+}
+
+/* Source code / pre blocks */
+.light pre {
+  background-color: #f1f5f9 !important;
+  border-color: rgba(203, 213, 225, 0.5) !important;
+  color: #334155;
+}
+
+/* Numpad / button grid bg in merchant/POS terminal */
+.light .bg-slate-800\/60.border.border-slate-700\/40.rounded-xl {
+  background-color: #f1f5f9 !important;
+  border-color: rgba(203, 213, 225, 0.6) !important;
+}
+
+/* Chart bg tracks */
+.light .bg-slate-800\/80.rounded-full {
+  background-color: rgba(226, 232, 240, 0.8) !important;
+}
+
+/* Tooltip in charts */
+.light .bg-slate-800.border-slate-700 {
+  background: #ffffff !important;
+  border-color: rgba(203, 213, 225, 0.7) !important;
+  color: #0f172a;
 }

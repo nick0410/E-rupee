@@ -1,9 +1,14 @@
 "use client";
 
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import { useEffect } from "react";
 import "./globals.css";
+import { ThemeProvider } from "@/context/ThemeContext";
 import { initPrivacyProtection } from "@/utils/privacyProtection";
 import WatermarkOverlay from "@/components/WatermarkOverlay";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export default function RootLayout({
   children,
@@ -16,9 +21,9 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className="min-h-screen">
+      <body className={`${inter.variable} min-h-screen`}>
         <WatermarkOverlay />
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );
