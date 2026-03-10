@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { initPrivacyProtection } from "@/utils/privacyProtection";
+import React from "react";
 
 /**
  * Watermark Overlay Component
@@ -9,9 +8,6 @@ import { initPrivacyProtection } from "@/utils/privacyProtection";
  * Similar to fintech dashboard security indicators
  */
 export default function WatermarkOverlay() {
-  useEffect(() => {
-    initPrivacyProtection();
-  }, []);
   return (
     <>
       <style>{`
