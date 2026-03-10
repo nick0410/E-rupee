@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
     // For Android Emulator, use 10.0.2.2 to access localhost
     // For physical device, use your computer's IP address
+    // Emulator: use 10.0.2.2 | Physical device: use Mac's WiFi IP
     private const val BASE_URL = "http://10.0.2.2:8000/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {

@@ -596,7 +596,7 @@ fun SignupScreen(navController: NavController) {
                     TextButton(
                         onClick = {
                             showDialog = false
-                            navController.navigate("home/$registeredUserId") {
+                            navController.navigate("main/$registeredUserId") {
                                 popUpTo("signup") { inclusive = true }
                             }
                         }

@@ -188,7 +188,7 @@ fun LoginScreen(modifier: Modifier = Modifier, navController: NavController) {
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text(stringResource(R.string.email_label)) },
+                    placeholder = { Text(stringResource(R.string.email_label), color = Color(0xFF94A3B8)) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .shadow(
@@ -208,6 +208,8 @@ fun LoginScreen(modifier: Modifier = Modifier, navController: NavController) {
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = Color.White,
                         unfocusedContainerColor = Color.White,
+                        focusedTextColor = Color(0xFF1E3A8A),
+                        unfocusedTextColor = Color(0xFF1E3A8A),
                         focusedBorderColor = Color(0xFF60A5FA),
                         unfocusedBorderColor = Color.White,
                         focusedLabelColor = Color(0xFF1E3A8A),
@@ -234,7 +236,7 @@ fun LoginScreen(modifier: Modifier = Modifier, navController: NavController) {
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text(stringResource(R.string.password_label)) },
+                    placeholder = { Text(stringResource(R.string.password_label), color = Color(0xFF94A3B8)) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .shadow(
@@ -264,6 +266,8 @@ fun LoginScreen(modifier: Modifier = Modifier, navController: NavController) {
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = Color.White,
                         unfocusedContainerColor = Color.White,
+                        focusedTextColor = Color(0xFF1E3A8A),
+                        unfocusedTextColor = Color(0xFF1E3A8A),
                         focusedBorderColor = Color(0xFF60A5FA),
                         unfocusedBorderColor = Color.White,
                         focusedLabelColor = Color(0xFF1E3A8A),
@@ -327,7 +331,7 @@ fun LoginScreen(modifier: Modifier = Modifier, navController: NavController) {
 
                                 if (response.isSuccessful) {
                                     val userId = response.body()?.user?.id ?: 0
-                                    navController.navigate("home/$userId") {
+                                    navController.navigate("main/$userId") {
                                         popUpTo("entry") { inclusive = true }
                                     }
                                 } else {

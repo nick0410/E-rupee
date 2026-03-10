@@ -26,6 +26,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CallMade
+import androidx.compose.material.icons.filled.CallReceived
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Refresh
@@ -63,10 +65,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
 import com.example.myapplication.data.BalanceResponse
 import com.example.myapplication.data.LockEntry
 import com.example.myapplication.data.LockRequest
 import com.example.myapplication.data.MintRequest
+import com.example.myapplication.data.TransactionItem
 import com.example.myapplication.network.RetrofitClient
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.launch
@@ -75,10 +80,11 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun HomeScreen(userId: Int = 0) {
+fun HomeScreen(userId: Int = 0, navController: NavController = rememberNavController()) {
     val scope = rememberCoroutineScope()
     var balance by remember { mutableStateOf(BalanceResponse()) }
     var locks by remember { mutableStateOf<List<LockEntry>>(emptyList()) }
+    var transactions by remember { mutableStateOf<List<TransactionItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var visible by remember { mutableStateOf(false) }
 
@@ -98,6 +104,10 @@ fun HomeScreen(userId: Int = 0) {
                 val locksResp = RetrofitClient.api.getLocks(userId)
                 if (locksResp.isSuccessful) {
                     locks = locksResp.body()?.locks ?: emptyList()
+                }
+                val txResp = RetrofitClient.api.getTransactions(userId)
+                if (txResp.isSuccessful) {
+                    transactions = txResp.body()?.transactions ?: emptyList()
                 }
             } catch (e: Exception) {
                 Log.e("Home", "Refresh error: ${e.message}")
@@ -261,10 +271,23 @@ fun HomeScreen(userId: Int = 0) {
                     animationSpec = tween(600, delayMillis = 400, easing = FastOutSlowInEasing)
                 ) + fadeIn(animationSpec = tween(600, delayMillis = 400))
             ) {
+                // Send & Receive row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
+                    ActionButton(
+                        icon = Icons.Default.CallMade,
+                        label = "Send",
+                        color = Color(0xFF3B82F6)
+                    ) { navController.navigate("send/$userId") }
+
+                    ActionButton(
+                        icon = Icons.Default.CallReceived,
+                        label = "Receive",
+                        color = Color(0xFF8B5CF6)
+                    ) { navController.navigate("receive/$userId") }
+
                     ActionButton(
                         icon = Icons.Default.Add,
                         label = "Mint",
@@ -280,21 +303,30 @@ fun HomeScreen(userId: Int = 0) {
                     ActionButton(
                         icon = Icons.Default.LockOpen,
                         label = "Release",
-                        color = Color(0xFF3B82F6)
+                        color = Color(0xFF94A3B8)
                     ) {
                         scope.launch {
                             try {
                                 val resp = RetrofitClient.api.releaseTokens(
                                     MintRequest(userId, "0")
                                 )
-                                statusMessage = if (resp.isSuccessful)
-                                    "Expired locks released ✅"
-                                else "Release failed"
+                                if (resp.isSuccessful) {
+                                    val body = resp.body()
+                                    val interest = body?.interest?.toDoubleOrNull() ?: 0.0
+                                    val total    = body?.total?.toDoubleOrNull() ?: 0.0
+                                    statusMessage = if (interest > 0)
+                                        "Released ✅\nPrincipal: e₹ ${body?.principal}\nInterest earned: +e₹ ${"%.2f".format(interest)}\nTotal credited: e₹ ${"%.2f".format(total)} 🎉"
+                                    else
+                                        "Locks released ✅\nCredited: e₹ ${body?.total ?: body?.principal}"
+                                } else {
+                                    statusMessage = "Release failed"
+                                }
                                 refresh()
                             } catch (e: Exception) {
                                 statusMessage = "Error: ${e.message}"
                             }
                         }
+
                     }
                 }
             }
@@ -339,6 +371,77 @@ fun HomeScreen(userId: Int = 0) {
                     } else {
                         locks.forEachIndexed { index, lock ->
                             LockCard(lock = lock, index = index)
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // ── Recent Transactions Section ──
+            AnimatedVisibility(
+                visible = visible,
+                enter = slideInVertically(
+                    initialOffsetY = { 60 },
+                    animationSpec = tween(600, delayMillis = 800, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(600, delayMillis = 800))
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Recent Transactions",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        if (transactions.isNotEmpty()) {
+                            Text(
+                                text = "${transactions.size} total",
+                                fontSize = 13.sp,
+                                color = Color.White.copy(alpha = 0.4f)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (loading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = Color(0xFF3B82F6),
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    } else if (transactions.isEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color.White.copy(alpha = 0.08f)
+                            )
+                        ) {
+                            Text(
+                                text = "No transactions yet 💸",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                textAlign = TextAlign.Center,
+                                color = Color.White.copy(alpha = 0.5f),
+                                fontSize = 16.sp
+                            )
+                        }
+                    } else {
+                        transactions.take(5).forEach { tx ->
+                            RecentTransactionCard(tx = tx, currentUserId = userId)
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
@@ -633,10 +736,113 @@ private fun LockDialog(
     )
 }
 
+// ── Recent Transaction Card ──
+@Composable
+private fun RecentTransactionCard(tx: TransactionItem, currentUserId: Int) {
+    val isSent = tx.type.lowercase() == "send" || tx.type.lowercase() == "transfer"
+    val accentColor = if (isSent) Color(0xFFEF4444) else Color(0xFF22C55E)
+    val icon = if (isSent) Icons.Default.CallMade else Icons.Default.CallReceived
+    val label = if (isSent) "Sent" else "Received"
+    val counterpartyLabel = if (isSent) "To" else "From"
+    val counterpartyAddress = if (isSent) tx.toAddress else tx.fromAddress
+    val shortAddress = if (counterpartyAddress.length > 10)
+        counterpartyAddress.take(6) + "..." + counterpartyAddress.takeLast(4)
+    else counterpartyAddress
+
+    val statusColor = when (tx.status.lowercase()) {
+        "success", "confirmed" -> Color(0xFF22C55E)
+        "pending" -> Color(0xFFFBBF24)
+        else -> Color(0xFFEF4444)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.08f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon circle
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = accentColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            // Details
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+                Text(
+                    text = "$counterpartyLabel: $shortAddress",
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.5f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (tx.note.isNotEmpty()) {
+                    Text(
+                        text = tx.note,
+                        fontSize = 11.sp,
+                        color = Color(0xFF60A5FA),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            // Amount + status
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "${if (isSent) "-" else "+"}e₹ ${tx.amount}",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .background(
+                            color = statusColor.copy(alpha = 0.18f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = tx.status.replaceFirstChar { it.uppercase() },
+                        fontSize = 10.sp,
+                        color = statusColor,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Preview
 @Composable
 fun HomeScreenPreview() {
     MyApplicationTheme {
-        HomeScreen(userId = 1)
+        HomeScreen(userId = 1, navController = rememberNavController())
     }
 }

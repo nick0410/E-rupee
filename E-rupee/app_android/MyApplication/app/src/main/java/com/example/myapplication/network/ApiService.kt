@@ -1,14 +1,19 @@
 package com.example.myapplication.network
 
-import com.example.myapplication.data.BalanceResponse
-import com.example.myapplication.data.LockRequest
-import com.example.myapplication.data.LocksResponse
 import com.example.myapplication.data.LoginRequest
 import com.example.myapplication.data.LoginResponse
-import com.example.myapplication.data.MintRequest
-import com.example.myapplication.data.TxResponse
 import com.example.myapplication.data.UserRequest
 import com.example.myapplication.data.UserResponse
+import com.example.myapplication.data.UsersListResponse
+import com.example.myapplication.data.BalanceResponse
+import com.example.myapplication.data.LockEntry
+import com.example.myapplication.data.LockRequest
+import com.example.myapplication.data.LocksResponse
+import com.example.myapplication.data.MintRequest
+import com.example.myapplication.data.TransactionItem
+import com.example.myapplication.data.TransactionsResponse
+import com.example.myapplication.data.TransferRequest
+import com.example.myapplication.data.TxResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -56,4 +61,17 @@ interface ApiService {
     suspend fun getLocks(
         @Path("userId") userId: Int
     ): Response<LocksResponse>
+
+    @POST("blockchain/transfer")
+    suspend fun transferTokens(
+        @Body request: TransferRequest
+    ): Response<TxResponse>
+
+    @GET("blockchain/transactions/{userId}")
+    suspend fun getTransactions(
+        @Path("userId") userId: Int
+    ): Response<TransactionsResponse>
+
+    @GET("users")
+    suspend fun getUsers(): Response<UsersListResponse>
 }
