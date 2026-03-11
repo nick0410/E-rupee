@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { FiArrowLeft, FiCopy, FiCheck, FiMaximize } from "react-icons/fi";
 import { useWallet } from "@/context/WalletContext";
+import ERupeeQR from "@/components/ERupeeQR";
 
 export default function ReceivePage() {
   const { user, balance } = useWallet();
@@ -46,28 +47,11 @@ export default function ReceivePage() {
         </button>
       </div>
 
-      {/* QR Code (Simulated) */}
+      {/* QR Code */}
       <div className="card-hover p-6 space-y-4">
         <h3 className="text-white font-semibold">QR Code</h3>
-        <div className="mx-auto w-48 h-48 bg-white rounded-2xl p-3 flex items-center justify-center">
-          {/* ASCII QR Simulation */}
-          <div className="w-full h-full bg-white relative overflow-hidden rounded-lg">
-            <svg viewBox="0 0 100 100" className="w-full h-full">
-              {/* Generate a visual QR-like pattern based on address */}
-              {Array.from({ length: 10 }).map((_, row) =>
-                Array.from({ length: 10 }).map((_, col) => {
-                  const idx = row * 10 + col;
-                  const charCode = address ? address.charCodeAt(idx % address.length) : 0;
-                  const filled = charCode % 3 !== 0;
-                  // Corner markers
-                  const isCorner = (row < 3 && col < 3) || (row < 3 && col > 6) || (row > 6 && col < 3);
-                  return filled || isCorner ? (
-                    <rect key={`${row}-${col}`} x={col * 10} y={row * 10} width={9} height={9} fill="black" rx={1} />
-                  ) : null;
-                })
-              )}
-            </svg>
-          </div>
+        <div className="mx-auto flex items-center justify-center">
+          <ERupeeQR value={qrData} size={260} />
         </div>
         <p className="text-slate-500 text-xs text-center">Scan this QR to send eINR to your wallet</p>
 
