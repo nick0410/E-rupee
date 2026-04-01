@@ -876,22 +876,26 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 8000
 const HOST = process.env.HOST || "0.0.0.0"
 
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 Server running on http://${HOST}:${PORT}`)
-  console.log(`📱 Android Emulator: Use http://10.0.2.2:${PORT}`)
-  console.log(`💻 Local Network: Use http://<your-ip>:${PORT}`)
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`)
-})
+if (process.env.VERCEL !== "1") {
+  app.listen(PORT, HOST, () => {
+    console.log(`🚀 Server running on http://${HOST}:${PORT}`)
+    console.log(`📱 Android Emulator: Use http://10.0.2.2:${PORT}`)
+    console.log(`💻 Local Network: Use http://<your-ip>:${PORT}`)
+    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`)
+  })
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM signal received: closing HTTP server')
-  await prisma.$disconnect()
-  process.exit(0)
-})
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    console.log('SIGTERM signal received: closing HTTP server')
+    await prisma.$disconnect()
+    process.exit(0)
+  })
 
-process.on('SIGINT', async () => {
-  console.log('SIGINT signal received: closing HTTP server')
-  await prisma.$disconnect()
-  process.exit(0)
-})
+  process.on('SIGINT', async () => {
+    console.log('SIGINT signal received: closing HTTP server')
+    await prisma.$disconnect()
+    process.exit(0)
+  })
+}
+
+module.exports = app
