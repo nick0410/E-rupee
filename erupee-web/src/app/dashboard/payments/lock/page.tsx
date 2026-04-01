@@ -20,8 +20,8 @@ export default function LockPage() {
   const [tab, setTab] = useState<"lock" | "active">("lock");
 
   const address = balance?.address || user?.walletAddress || "";
-  const available = balance?.available ?? 0;
-  const locked = balance?.locked ?? 0;
+  const available = Number(balance?.available ?? 0) || 0;
+  const locked = Number(balance?.locked ?? 0) || 0;
 
   const unlockTime = Math.floor(Date.now() / 1000) + parseInt(duration) * 86400;
 
@@ -35,7 +35,7 @@ export default function LockPage() {
     setError("");
     try {
       const res = await api.lock(user!.id, amount, unlockTime);
-      setTxHash(res.txHash || "");
+      setTxHash(res.tx || "");
       await refreshAll();
       setState("success");
     } catch (err: any) {

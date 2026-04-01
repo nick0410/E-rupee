@@ -12,6 +12,9 @@ export default function BlockchainPage() {
   const { networkInfo, balance, transactions, refreshNetwork, loading } = useWallet();
   const [tab, setTab] = useState<'overview' | 'contract' | 'network'>('overview');
   const [copied, setCopied] = useState<string | null>(null);
+  const availableBalance = Number(balance?.available ?? 0) || 0;
+  const lockedBalance = Number(balance?.locked ?? 0) || 0;
+  const totalBalance = availableBalance + lockedBalance;
 
   const copyText = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -80,15 +83,15 @@ export default function BlockchainPage() {
               </div>
               <div className="flex justify-between p-3 rounded-lg bg-slate-800/40">
                 <span className="text-slate-400 text-sm">Total Balance</span>
-                <span className="text-white font-semibold">₹{(balance?.total ?? 0).toLocaleString()}</span>
+                <span className="text-white font-semibold">₹{totalBalance.toLocaleString()}</span>
               </div>
               <div className="flex justify-between p-3 rounded-lg bg-slate-800/40">
                 <span className="text-slate-400 text-sm">Available</span>
-                <span className="text-emerald-400 font-semibold">₹{(balance?.available ?? 0).toLocaleString()}</span>
+                <span className="text-emerald-400 font-semibold">₹{availableBalance.toLocaleString()}</span>
               </div>
               <div className="flex justify-between p-3 rounded-lg bg-slate-800/40">
                 <span className="text-slate-400 text-sm">Locked</span>
-                <span className="text-amber-400 font-semibold">₹{(balance?.locked ?? 0).toLocaleString()}</span>
+                <span className="text-amber-400 font-semibold">₹{lockedBalance.toLocaleString()}</span>
               </div>
             </div>
           </div>

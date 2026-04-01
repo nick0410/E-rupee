@@ -17,7 +17,7 @@ export default function MintPage() {
   const [copied, setCopied] = useState(false);
 
   const address = balance?.address || user?.walletAddress || "";
-  const available = balance?.available ?? 0;
+  const available = Number(balance?.available ?? 0) || 0;
 
   const handleConfirm = () => {
     if (!amount || parseFloat(amount) <= 0) return;
@@ -29,7 +29,7 @@ export default function MintPage() {
     setError("");
     try {
       const res = await api.mint(user!.id, amount);
-      setTxHash(res.txHash || "");
+      setTxHash(res.tx || "");
       await refreshAll();
       setState("success");
     } catch (err: any) {

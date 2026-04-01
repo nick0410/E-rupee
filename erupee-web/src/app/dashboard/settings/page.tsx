@@ -62,6 +62,9 @@ export default function SettingsPage() {
   };
 
   const address = balance?.address || user?.walletAddress || "";
+  const availableBalance = Number(balance?.available ?? 0) || 0;
+  const lockedBalance = Number(balance?.locked ?? 0) || 0;
+  const totalBalance = availableBalance + lockedBalance;
   const initials = user?.name ? user.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : 'U';
 
   const tabs = [
@@ -180,7 +183,7 @@ export default function SettingsPage() {
               {[
                 { label: 'Account Verified', status: true },
                 { label: 'Email Verified', status: !!user?.email },
-                { label: 'KYC Completed', status: !!user?.aadhaar },
+                { label: 'KYC Completed', status: !!profileForm.pan },
                 { label: 'Wallet Linked', status: !!address },
               ].map((item, i) => (
                 <div key={i} className={rowCls}>
@@ -211,9 +214,9 @@ export default function SettingsPage() {
                 </div>
               </div>
               {[
-                { label: 'Total Balance', value: `₹${(balance?.total ?? 0).toLocaleString()}`, cls: isDark ? 'text-white font-semibold' : 'text-slate-900 font-semibold' },
-                { label: 'Available', value: `₹${(balance?.available ?? 0).toLocaleString()}`, cls: 'text-emerald-500 font-semibold' },
-                { label: 'Locked', value: `₹${(balance?.locked ?? 0).toLocaleString()}`, cls: 'text-amber-500 font-semibold' },
+                { label: 'Total Balance', value: `₹${totalBalance.toLocaleString()}`, cls: isDark ? 'text-white font-semibold' : 'text-slate-900 font-semibold' },
+                { label: 'Available', value: `₹${availableBalance.toLocaleString()}`, cls: 'text-emerald-500 font-semibold' },
+                { label: 'Locked', value: `₹${lockedBalance.toLocaleString()}`, cls: 'text-amber-500 font-semibold' },
                 { label: 'Network', value: 'Hardhat Local (Chain 31337)', cls: isDark ? 'text-white text-sm' : 'text-slate-900 text-sm' },
               ].map(item => (
                 <div key={item.label} className={rowCls}>
