@@ -116,10 +116,10 @@ export const api = {
   getBalance: (userId: number) =>
     apiFetch<BalanceResponse>(`/blockchain/balance/${userId}`),
 
-  mint: (userId: number, amount: string) =>
+  mint: (userId: number, amount: string, source?: "DISBURSE" | "MERCHANT_POS") =>
     apiFetch<TxResponse>("/blockchain/mint", {
       method: "POST",
-      body: JSON.stringify({ userId, amount }),
+      body: JSON.stringify({ userId, amount, source }),
     }),
 
   lock: (userId: number, amount: string, unlockTime: number, documentCID?: string) =>

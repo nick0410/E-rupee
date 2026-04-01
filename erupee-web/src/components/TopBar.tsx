@@ -3,14 +3,15 @@
 import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { FiSearch, FiBell, FiUser, FiChevronRight, FiCamera, FiTrash2, FiBox, FiShield, FiBarChart2, FiSettings } from "react-icons/fi";
+import { FiSearch, FiBell, FiUser, FiChevronRight, FiCamera, FiTrash2, FiBox, FiBarChart2, FiPieChart, FiSettings } from "react-icons/fi";
 import BlockchainIcon from "./BlockchainIcon";
 import { useTheme } from "@/context/ThemeContext";
+import { clearPaymentAlerts, getPaymentAlerts, requestNotificationPermission, subscribePaymentAlerts, type PaymentAlert } from "@/lib/paymentNotifications";
 
 const SYSTEM_MENU = [
   { name: "Blockchain", href: "/dashboard/blockchain", icon: FiBox },
-  { name: "Compliance & AML", href: "/dashboard/compliance", icon: FiShield },
   { name: "Analytics", href: "/dashboard/analytics", icon: FiBarChart2 },
+  { name: "Investments", href: "/dashboard/investments", icon: FiPieChart },
   { name: "Settings", href: "/dashboard/settings", icon: FiSettings },
 ];
 
@@ -22,8 +23,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/government": "Government & Subsidies",
   "/dashboard/contracts": "Smart Contracts",
   "/dashboard/blockchain": "Blockchain Explorer",
-  "/dashboard/compliance": "Compliance & AML",
   "/dashboard/analytics": "Analytics",
+  "/dashboard/investments": "Investments",
   "/dashboard/settings": "Settings",
 };
 
@@ -35,9 +36,13 @@ export default function TopBar() {
   const [profileImg, setProfileImg] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showSystemMenu, setShowSystemMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [paymentAlerts, setPaymentAlerts] = useState<PaymentAlert[]>([]);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
   const fileRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const systemMenuRef = useRef<HTMLDivElement>(null);
+  const bellRef = useRef<HTMLDivElement>(null);
 
   // Load saved profile image
   useEffect(() => {
@@ -45,11 +50,24 @@ export default function TopBar() {
     if (saved) setProfileImg(saved);
   }, []);
 
+  useEffect(() => {
+    setPaymentAlerts(getPaymentAlerts());
+
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotificationPermission(Notification.permission);
+    } else {
+      setNotificationPermission("unsupported");
+    }
+
+    return subscribePaymentAlerts(() => setPaymentAlerts(getPaymentAlerts()));
+  }, []);
+
   // Close menus on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
       if (systemMenuRef.current && !systemMenuRef.current.contains(e.target as Node)) setShowSystemMenu(false);
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setShowNotifications(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -87,6 +105,14 @@ export default function TopBar() {
     setProfileImg(null);
     localStorage.removeItem("profileImg");
     setShowMenu(false);
+  };
+
+  const handleBellClick = async () => {
+    if (notificationPermission !== "granted") {
+      const permission = await requestNotificationPermission();
+      if (permission) setNotificationPermission(permission);
+    }
+    setShowNotifications((prev) => !prev);
   };
 
   const title = PAGE_TITLES[pathname] || "Dashboard";
@@ -230,16 +256,64 @@ export default function TopBar() {
         </button>
 
         {/* Notifications */}
-        <button className={`relative w-9 h-9 flex items-center justify-center rounded-lg border transition-all ${
-          isDark
-            ? "bg-slate-800/50 border-slate-700/50 text-slate-400 hover:text-white hover:border-slate-600"
-            : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:border-slate-300 shadow-sm"
-        }`}>
-          <FiBell size={16} />
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
-            3
-          </span>
-        </button>
+        <div className="relative" ref={bellRef}>
+          <button
+            onClick={handleBellClick}
+            className={`relative w-9 h-9 flex items-center justify-center rounded-lg border transition-all ${
+              isDark
+                ? "bg-slate-800/50 border-slate-700/50 text-slate-400 hover:text-white hover:border-slate-600"
+                : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:border-slate-300 shadow-sm"
+            }`}
+            title="Payment notifications"
+          >
+            <FiBell size={16} />
+            {paymentAlerts.length > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                {paymentAlerts.length > 9 ? "9+" : paymentAlerts.length}
+              </span>
+            )}
+          </button>
+
+          {showNotifications && (
+            <div className={`absolute right-0 top-11 w-80 rounded-xl border p-3 shadow-[0_20px_60px_rgba(0,0,0,0.35)] ${
+              isDark ? "bg-[#0A0F1E] border-slate-700/60" : "bg-white border-slate-200"
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <p className={`text-xs font-semibold tracking-wide ${isDark ? "text-slate-300" : "text-slate-700"}`}>Payment Alerts</p>
+                {paymentAlerts.length > 0 && (
+                  <button
+                    onClick={clearPaymentAlerts}
+                    className={`text-[11px] ${isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-800"}`}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {notificationPermission !== "granted" && (
+                <p className={`text-[11px] mb-2 ${isDark ? "text-amber-300" : "text-amber-600"}`}>
+                  Allow browser notification permission to get payment message + tune.
+                </p>
+              )}
+
+              {paymentAlerts.length === 0 ? (
+                <p className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>No payment received alerts yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-auto pr-1">
+                  {paymentAlerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className={`rounded-lg p-2 border ${isDark ? "border-slate-700/50 bg-slate-900/40" : "border-slate-200 bg-slate-50"}`}
+                    >
+                      <p className={`text-xs font-medium ${isDark ? "text-white" : "text-slate-900"}`}>{alert.message}</p>
+                      <p className={`text-[11px] ${isDark ? "text-slate-500" : "text-slate-500"}`}>{new Date(alert.createdAt).toLocaleString("en-IN")}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Profile Image */}
         <div className="relative" ref={menuRef}>

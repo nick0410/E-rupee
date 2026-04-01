@@ -11,6 +11,8 @@ import { useTheme } from "@/context/ThemeContext";
 import { shortHash } from "@/lib/utils";
 import type { DbTransaction } from "@/lib/api";
 
+const MAX_VOLUME_CAP = 100000000;
+
 export default function TransactionsPage() {
   const { user, balance, transactions, refreshTransactions, loading } = useWallet();
   const { theme } = useTheme();
@@ -41,6 +43,7 @@ export default function TransactionsPage() {
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
   const types = [...new Set(transactions.map(t => t.type))];
   const totalVolume = transactions.reduce((s, t) => s + t.amount, 0);
+  const cappedVolume = Math.min(totalVolume, MAX_VOLUME_CAP);
 
   const isIncoming = (tx: DbTransaction) => {
     return tx.type === 'MINT' || tx.type === 'SUBSIDY' || tx.type === 'RECEIVE' ||
@@ -111,7 +114,7 @@ export default function TransactionsPage() {
           <p className={`text-[10px] uppercase tracking-wider ${isDark ? "text-slate-500" : "text-slate-400"}`}>Outgoing</p>
         </div>
         <div className="card-hover p-3 text-center">
-          <p className="text-lg font-bold text-amber-500">₹{totalVolume.toLocaleString()}</p>
+          <p className="text-lg font-bold text-amber-500">₹{cappedVolume.toLocaleString('en-IN')}</p>
           <p className={`text-[10px] uppercase tracking-wider ${isDark ? "text-slate-500" : "text-slate-400"}`}>Volume</p>
         </div>
       </div>

@@ -1,49 +1,127 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   FiTrendingUp, FiActivity, FiBarChart2,
   FiDollarSign, FiRefreshCw,
+  FiTarget,
 } from "react-icons/fi";
 import { useWallet } from "@/context/WalletContext";
 import { useTheme } from "@/context/ThemeContext";
+import {
+  buildExpenseTrackerPlan,
+  deriveFinancialSignals,
+} from "@/lib/financeModels";
+
+const MAX_ANALYTICS_TX_AMOUNT = 100000000;
 
 export default function AnalyticsPage() {
   const { transactions, balance, locks, networkInfo, refreshAll, loading } = useWallet();
   const { theme } = useTheme();
   const isDark = theme === "dark";
+  const availableAmount = parseFloat(String(balance?.available ?? 0)) || 0;
+  const lockedAmount = parseFloat(String(balance?.locked ?? 0)) || 0;
+  const totalBalance = availableAmount + lockedAmount;
+  const [goalAmount, setGoalAmount] = useState("120000");
+  const [goalMonths, setGoalMonths] = useState("12");
+
+  const normalizeType = (type?: string) => {
+    const normalized = (type || "UNKNOWN").toUpperCase();
+    if (normalized === "TRANSFER") return "TRANSFER_OUT";
+    if (normalized === "RECEIVE") return "TRANSFER_IN";
+    if (normalized === "SUBSIDY") return "DISBURSE";
+    return normalized;
+  };
+
+  const typeLabel = (type: string) => type.replace(/_/g, " ");
 
   const analytics = useMemo(() => {
-    const totalVolume = transactions.reduce((s, t) => s + t.amount, 0);
+    const normalizedTxs = transactions
+      .map((tx) => ({
+        ...tx,
+        amount: Number(tx.amount) || 0,
+        type: normalizeType(tx.type),
+      }))
+      .filter((tx) => Number.isFinite(tx.amount) && Math.abs(tx.amount) <= MAX_ANALYTICS_TX_AMOUNT);
+
+    const totalVolume = normalizedTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
     const typeCounts: Record<string, number> = {};
     const typeVolumes: Record<string, number> = {};
-    transactions.forEach(t => {
-      typeCounts[t.type] = (typeCounts[t.type] || 0) + 1;
-      typeVolumes[t.type] = (typeVolumes[t.type] || 0) + t.amount;
+    normalizedTxs.forEach((tx) => {
+      typeCounts[tx.type] = (typeCounts[tx.type] || 0) + 1;
+      typeVolumes[tx.type] = (typeVolumes[tx.type] || 0) + Math.abs(tx.amount);
     });
-    const avgTxAmount = transactions.length > 0 ? totalVolume / transactions.length : 0;
-    const largestTx = transactions.length > 0 ? Math.max(...transactions.map(t => t.amount)) : 0;
-    const smallestTx = transactions.length > 0 ? Math.min(...transactions.map(t => t.amount)) : 0;
-    const byDate: Record<string, number> = {};
-    transactions.forEach(t => {
-      const date = new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-      byDate[date] = (byDate[date] || 0) + t.amount;
+
+    const avgTxAmount = normalizedTxs.length > 0 ? totalVolume / normalizedTxs.length : 0;
+    const txAmounts = normalizedTxs.map((tx) => Math.abs(tx.amount));
+    const largestTx = txAmounts.length > 0 ? Math.max(...txAmounts) : 0;
+    const smallestTx = txAmounts.length > 0 ? Math.min(...txAmounts) : 0;
+
+    const byDateKey: Record<string, number> = {};
+    normalizedTxs.forEach((tx) => {
+      const d = new Date(tx.createdAt);
+      if (Number.isNaN(d.getTime())) return;
+      const dateKey = d.toISOString().slice(0, 10);
+      byDateKey[dateKey] = (byDateKey[dateKey] || 0) + Math.abs(tx.amount);
     });
-    return { totalVolume, typeCounts, typeVolumes, avgTxAmount, largestTx, smallestTx, byDate };
+
+    const byDate = Object.entries(byDateKey)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([dateKey, volume]) => ({
+        key: dateKey,
+        label: new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+        volume,
+      }));
+
+    return {
+      totalVolume,
+      typeCounts,
+      typeVolumes,
+      avgTxAmount,
+      largestTx,
+      smallestTx,
+      byDate,
+      totalTxCount: normalizedTxs.length,
+      normalizedTxs,
+    };
   }, [transactions]);
 
   const typeColors: Record<string, string> = {
-    MINT: '#10b981', TRANSFER: '#3b82f6', LOCK: '#f59e0b', RELEASE: '#8b5cf6',
+    MINT: '#10b981',
+    DISBURSE: '#14b8a6',
+    MERCHANT_POS: '#8b5cf6',
+    TRANSFER_IN: '#3b82f6',
+    TRANSFER_OUT: '#f97316',
+    LOCK: '#f59e0b',
+    RELEASE: '#8b5cf6',
+    INTEREST_CREDIT: '#22c55e',
   };
 
-  const dateEntries = Object.entries(analytics.byDate);
-  const maxDateVol = dateEntries.length > 0 ? Math.max(...dateEntries.map(([, v]) => v)) : 1;
+  const dateEntries = analytics.byDate;
+  const maxDateVol = dateEntries.length > 0 ? Math.max(...dateEntries.map((entry) => entry.volume)) : 1;
   const typeEntries = Object.entries(analytics.typeCounts);
-  const totalTxCount = transactions.length || 1;
+  const totalTxCount = analytics.totalTxCount || 1;
+
+  const parsedGoalAmount = Math.max(0, Number(goalAmount) || 0);
+  const parsedGoalMonths = Math.min(120, Math.max(1, Number(goalMonths) || 1));
+
+  const financialSignals = useMemo(
+    () => deriveFinancialSignals(analytics.normalizedTxs),
+    [analytics.normalizedTxs],
+  );
+
+  const expensePlan = useMemo(
+    () => buildExpenseTrackerPlan(financialSignals, parsedGoalAmount, parsedGoalMonths, lockedAmount),
+    [financialSignals, parsedGoalAmount, parsedGoalMonths, lockedAmount],
+  );
+
+  const goalProgress = expensePlan.goalAmount > 0
+    ? Math.min(100, (expensePlan.projectedSavings / expensePlan.goalAmount) * 100)
+    : 0;
 
   const metricCards = [
     { label: 'Total Volume', value: `₹${analytics.totalVolume.toLocaleString()}`, icon: <FiDollarSign size={16} />, color: 'text-blue-500' },
-    { label: 'Transactions', value: transactions.length.toString(), icon: <FiActivity size={16} />, color: 'text-emerald-500' },
+    { label: 'Transactions', value: analytics.totalTxCount.toString(), icon: <FiActivity size={16} />, color: 'text-emerald-500' },
     { label: 'Avg Amount', value: `₹${Math.round(analytics.avgTxAmount).toLocaleString()}`, icon: <FiBarChart2 size={16} />, color: 'text-violet-500' },
     { label: 'Active Locks', value: locks.length.toString(), icon: <FiTrendingUp size={16} />, color: 'text-amber-500' },
   ];
@@ -51,8 +129,8 @@ export default function AnalyticsPage() {
   const detailCards = [
     { value: `₹${analytics.largestTx.toLocaleString()}`, label: 'Largest Transaction', cls: 'text-emerald-500' },
     { value: `₹${analytics.smallestTx.toLocaleString()}`, label: 'Smallest Transaction', cls: 'text-blue-500' },
-    { value: `₹${(balance?.total ?? 0).toLocaleString()}`, label: 'Total Balance', cls: isDark ? 'text-white' : 'text-slate-900' },
-    { value: `₹${(balance?.locked ?? 0).toLocaleString()}`, label: 'Locked Amount', cls: 'text-amber-500' },
+    { value: `₹${totalBalance.toLocaleString()}`, label: 'Total Balance', cls: isDark ? 'text-white' : 'text-slate-900' },
+    { value: `₹${lockedAmount.toLocaleString()}`, label: 'Locked Amount', cls: 'text-amber-500' },
   ];
 
   const networkCards = [
@@ -76,6 +154,96 @@ export default function AnalyticsPage() {
         >
           <FiRefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
+      </div>
+
+      {/* 1) Expense Tracker */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 card-hover p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className={`font-semibold flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
+                <FiTarget className="text-blue-500" /> Expense Tracker
+              </h3>
+              <p className={`text-xs mt-1 ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                Set your saving target and get a simple monthly execution plan.
+              </p>
+            </div>
+            <span className={`text-[10px] px-2 py-1 rounded-full border ${isDark ? "text-slate-300 border-slate-700" : "text-slate-600 border-slate-200"}`}>
+              Simple Goal Model
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <label className="space-y-1">
+              <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>Target Savings (Rs)</span>
+              <input
+                type="number"
+                min={0}
+                step={500}
+                value={goalAmount}
+                onChange={(event) => setGoalAmount(event.target.value)}
+                className={`w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:border-blue-500/60 ${isDark ? "bg-slate-800/60 border-slate-700/40 text-white" : "bg-white border-slate-200 text-slate-900"}`}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>Timeline (months)</span>
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={goalMonths}
+                onChange={(event) => setGoalMonths(event.target.value)}
+                className={`w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:border-blue-500/60 ${isDark ? "bg-slate-800/60 border-slate-700/40 text-white" : "bg-white border-slate-200 text-slate-900"}`}
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className={`rounded-xl p-3 border ${isDark ? "bg-slate-800/30 border-slate-700/30" : "bg-slate-50 border-slate-200"}`}>
+              <p className={`text-[10px] uppercase tracking-wider ${isDark ? "text-slate-500" : "text-slate-400"}`}>Need Per Month</p>
+              <p className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>₹{Math.round(expensePlan.requiredMonthlySaving).toLocaleString("en-IN")}</p>
+            </div>
+            <div className={`rounded-xl p-3 border ${isDark ? "bg-slate-800/30 border-slate-700/30" : "bg-slate-50 border-slate-200"}`}>
+              <p className={`text-[10px] uppercase tracking-wider ${isDark ? "text-slate-500" : "text-slate-400"}`}>Projected by Goal</p>
+              <p className="text-lg font-bold text-emerald-500">₹{Math.round(expensePlan.projectedSavings).toLocaleString("en-IN")}</p>
+            </div>
+            <div className={`rounded-xl p-3 border ${isDark ? "bg-slate-800/30 border-slate-700/30" : "bg-slate-50 border-slate-200"}`}>
+              <p className={`text-[10px] uppercase tracking-wider ${isDark ? "text-slate-500" : "text-slate-400"}`}>Success Odds</p>
+              <p className="text-lg font-bold text-blue-500">{expensePlan.achievementProbability}%</p>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>Projected goal progress</span>
+              <span className={`text-xs font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>{goalProgress.toFixed(0)}%</span>
+            </div>
+            <div className={`h-2 rounded-full ${isDark ? "bg-slate-800" : "bg-slate-200"}`}>
+              <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-500" style={{ width: `${goalProgress}%` }} />
+            </div>
+          </div>
+        </div>
+
+        <div className="card-hover p-5">
+          <h3 className={`font-semibold mb-3 ${isDark ? "text-white" : "text-slate-900"}`}>How To Achieve</h3>
+          <div className="space-y-2">
+            {expensePlan.actions.map((action, index) => (
+              <div key={index} className={`p-2.5 rounded-lg border text-xs ${isDark ? "border-slate-700/40 bg-slate-900/30 text-slate-300" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+                {index + 1}. {action}
+              </div>
+            ))}
+          </div>
+          <div className={`mt-3 p-3 rounded-lg border ${isDark ? "border-amber-500/30 bg-amber-500/10" : "border-amber-200 bg-amber-50"}`}>
+            <p className="text-amber-500 text-xs font-semibold">Monthly Gap</p>
+            <p className={`text-sm mt-1 ${isDark ? "text-white" : "text-slate-900"}`}>
+              ₹{Math.round(expensePlan.monthlyGap).toLocaleString("en-IN")}
+            </p>
+            <p className={`text-[11px] mt-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              Suggested cut: ₹{Math.round(expensePlan.recommendedCuts).toLocaleString("en-IN")},
+              extra income target: ₹{Math.round(expensePlan.recommendedExtraIncome).toLocaleString("en-IN")}.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Key Metrics */}
@@ -111,20 +279,20 @@ export default function AnalyticsPage() {
             </div>
           ) : (
             <div className="flex items-end gap-3 h-48">
-              {dateEntries.slice(-10).map(([date, vol], i) => (
+              {dateEntries.slice(-10).map((entry, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
                   <div className="w-full relative">
                     <div
                       className="w-full rounded-t-lg bg-gradient-to-t from-blue-600 to-blue-400/70 bar-animate cursor-pointer hover:from-blue-500 hover:to-blue-300 transition-colors relative"
-                      style={{ height: `${(vol / maxDateVol) * 180}px`, animationDelay: `${i * 0.1}s` }}
+                      style={{ height: `${(entry.volume / maxDateVol) * 180}px`, animationDelay: `${i * 0.1}s` }}
                     />
                     {/* Tooltip */}
                     <div className={`absolute -top-9 left-1/2 -translate-x-1/2 border rounded-lg px-3 py-1.5 text-[10px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl ${isDark ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
                       }`}>
-                      ₹{vol.toLocaleString()}
+                      ₹{entry.volume.toLocaleString()}
                     </div>
                   </div>
-                  <span className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>{date}</span>
+                  <span className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>{entry.label}</span>
                 </div>
               ))}
             </div>
@@ -160,7 +328,7 @@ export default function AnalyticsPage() {
                   })()}
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <p className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{transactions.length}</p>
+                  <p className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{analytics.totalTxCount}</p>
                   <p className={`text-[9px] ${isDark ? "text-slate-500" : "text-slate-400"}`}>TOTAL</p>
                 </div>
               </div>
@@ -170,7 +338,7 @@ export default function AnalyticsPage() {
                   <div key={i} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: typeColors[type] || '#64748b' }} />
-                      <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>{type}</span>
+                      <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>{typeLabel(type)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`text-xs font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>{count}</span>
@@ -191,14 +359,16 @@ export default function AnalyticsPage() {
           <p className={`text-sm text-center py-6 ${isDark ? "text-slate-500" : "text-slate-400"}`}>No data available. Make some transactions to see analytics.</p>
         ) : (
           <div className="space-y-3">
-            {Object.entries(analytics.typeVolumes).map(([type, vol], i) => {
+            {Object.entries(analytics.typeVolumes)
+              .sort((a, b) => b[1] - a[1])
+              .map(([type, vol], i) => {
               const pct = analytics.totalVolume > 0 ? (vol / analytics.totalVolume) * 100 : 0;
               return (
                 <div key={i}>
                   <div className="flex justify-between text-sm mb-1">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: typeColors[type] || '#64748b' }} />
-                      <span className={isDark ? "text-slate-400" : "text-slate-500"}>{type}</span>
+                      <span className={isDark ? "text-slate-400" : "text-slate-500"}>{typeLabel(type)}</span>
                     </div>
                     <span className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>₹{vol.toLocaleString()} ({Math.round(pct)}%)</span>
                   </div>

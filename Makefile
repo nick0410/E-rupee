@@ -54,9 +54,8 @@ prisma-generate:
 	cd erupee-backend && npx prisma generate
 
 prisma-migrate:
-	@echo 🔄  Waking up Neon DB (free tier may be suspended)...
-	-cd erupee-backend && npx prisma db execute --stdin < nul 2>nul
-	cd erupee-backend && npx prisma migrate deploy
+	@echo 🔄  Running Prisma migrations with retry (handles Neon cold starts)...
+	cd erupee-backend && node scripts\prisma-migrate-retry.cjs
 
 prisma-setup: prisma-generate prisma-migrate
 	@echo ✅  Prisma ready.

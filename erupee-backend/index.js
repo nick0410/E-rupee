@@ -2,10 +2,20 @@ require("dotenv").config()
 
 const express = require("express")
 const cors = require("cors")
-const { PrismaClient } = require("@prisma/client")
+const { PrismaClient, Prisma } = require("@prisma/client")
 
 const app = express()
 const prisma = new PrismaClient()
+const MAX_USER_LEDGER_VOLUME = 100000000
+const MAX_USER_LEDGER_VOLUME_LABEL = MAX_USER_LEDGER_VOLUME.toLocaleString("en-IN")
+const GLOBAL_LEDGER_CAP = parseFloat(process.env.GLOBAL_LEDGER_CAP || "100000000")
+const GLOBAL_LEDGER_CAP_LABEL = GLOBAL_LEDGER_CAP.toLocaleString("en-IN")
+const BLOCKCHAIN_MODE = (process.env.BLOCKCHAIN_MODE || "simulated").toLowerCase() === "onchain" ? "onchain" : "simulated"
+const ONCHAIN_BACKEND_URL = process.env.ONCHAIN_BACKEND_URL || "http://127.0.0.1:3001"
+const ONCHAIN_REQUEST_TIMEOUT_MS = parseInt(process.env.ONCHAIN_REQUEST_TIMEOUT_MS || "10000", 10)
+const ALLOW_EXTERNAL_TRANSFER = String(process.env.ALLOW_EXTERNAL_TRANSFER || "false").toLowerCase() === "true"
+const WALLET_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
+const FLOAT_EPSILON = 1e-9
 
 // Enhanced CORS configuration
 app.use(cors({
@@ -228,6 +238,120 @@ app.put("/users/:userId", async (req, res) => {
 // Blockchain endpoints
 // ────────────────────────────────────────────
 
+class ApiError extends Error {
+  constructor(status, message) {
+    super(message)
+    this.status = status
+  }
+}
+
+function routeError(res, label, err) {
+  console.error(`${label}:`, err)
+  if (err instanceof ApiError) {
+    return res.status(err.status).json({ error: err.message })
+  }
+
+  return res.status(500).json({
+    error: "Server error",
+    details: process.env.NODE_ENV === "development" ? err.message : undefined
+  })
+}
+
+function toUserId(value, fieldName) {
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new ApiError(400, `${fieldName} must be a valid positive integer`)
+  }
+  return parsed
+}
+
+function toAmount(value, fieldName = "amount") {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new ApiError(400, `${fieldName} must be a valid positive number`)
+  }
+  return parsed
+}
+
+function normalizeWalletAddress(address) {
+  const normalized = String(address || "").trim().toLowerCase()
+  if (!WALLET_ADDRESS_REGEX.test(normalized)) {
+    throw new ApiError(400, "toAddress must be a valid wallet address")
+  }
+  return normalized
+}
+
+function assertAmountWithinPerTxLimit(amount) {
+  if (amount > MAX_USER_LEDGER_VOLUME) {
+    throw new ApiError(400, `Amount cannot exceed e₹ ${MAX_USER_LEDGER_VOLUME_LABEL}`)
+  }
+}
+
+function assertGlobalLedgerCap(currentIssued, additionalIssued) {
+  if (additionalIssued <= 0) return
+  const projected = currentIssued + additionalIssued
+  if (projected > GLOBAL_LEDGER_CAP + FLOAT_EPSILON) {
+    throw new ApiError(400, `Global issuance cap exceeded. Max allowed is e₹ ${GLOBAL_LEDGER_CAP_LABEL}`)
+  }
+}
+
+async function getGlobalIssuedVolume(db = prisma) {
+  const [walletAgg, lockedAgg] = await Promise.all([
+    db.wallet.aggregate({ _sum: { balance: true } }),
+    db.transaction.aggregate({
+      where: { type: "LOCK", status: "locked" },
+      _sum: { amount: true }
+    })
+  ])
+
+  const walletTotal = walletAgg._sum.balance || 0
+  const lockedTotal = lockedAgg._sum.amount || 0
+  return walletTotal + lockedTotal
+}
+
+async function callOnchainApi(path, payload) {
+  if (BLOCKCHAIN_MODE !== "onchain") return null
+  if (typeof fetch !== "function") {
+    throw new ApiError(500, "On-chain mode requires Node.js runtime with fetch support")
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), ONCHAIN_REQUEST_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(`${ONCHAIN_BACKEND_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    })
+
+    let body = {}
+    try {
+      body = await response.json()
+    } catch {
+      body = {}
+    }
+
+    if (!response.ok) {
+      const backendMessage = typeof body.error === "string" ? body.error : `On-chain request failed (${response.status})`
+      throw new ApiError(502, backendMessage)
+    }
+
+    return body
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new ApiError(504, "On-chain backend request timed out")
+    }
+    if (err instanceof ApiError) {
+      throw err
+    }
+    throw new ApiError(502, `On-chain backend unavailable: ${err.message}`)
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 // Helper: generate a fake tx hash (simulated blockchain)
 function fakeTxHash() {
   const chars = '0123456789abcdef'
@@ -237,13 +361,17 @@ function fakeTxHash() {
 }
 
 // Helper: get or create wallet address for user
-async function ensureWalletAddress(userId) {
-  const user = await prisma.user.findUnique({ where: { id: userId } })
+async function ensureWalletAddress(userId, db = prisma) {
+  const user = await db.user.findUnique({ where: { id: userId } })
+  if (!user) {
+    throw new ApiError(404, "User not found")
+  }
+
   if (user.walletAddress) return user.walletAddress
 
   // Generate a deterministic-ish address
   const addr = '0x' + Buffer.from(`user-${userId}-erupee`).toString('hex').padStart(40, '0').slice(0, 40)
-  await prisma.user.update({ where: { id: userId }, data: { walletAddress: addr } })
+  await db.user.update({ where: { id: userId }, data: { walletAddress: addr } })
   return addr
 }
 
@@ -285,39 +413,65 @@ app.get("/blockchain/balance/:userId", async (req, res) => {
 // POST /blockchain/mint
 app.post("/blockchain/mint", async (req, res) => {
   try {
-    const { userId, amount } = req.body
-    const parsedAmount = parseFloat(amount)
+    const { userId, amount, source } = req.body
+    const normalizedUserId = toUserId(userId, "userId")
+    const parsedAmount = toAmount(amount)
+    const isDisburse = typeof source === "string" && source.toUpperCase() === "DISBURSE"
+    const isMerchantPos = typeof source === "string" && source.toUpperCase() === "MERCHANT_POS"
 
-    if (!userId || isNaN(parsedAmount) || parsedAmount <= 0) {
-      return res.status(400).json({ error: "Invalid userId or amount" })
-    }
+    assertAmountWithinPerTxLimit(parsedAmount)
 
-    const address = await ensureWalletAddress(userId)
-
-    await prisma.wallet.update({
-      where: { userId },
-      data: { balance: { increment: parsedAmount } }
+    const address = await ensureWalletAddress(normalizedUserId)
+    const onchainResp = await callOnchainApi("/mint", {
+      to: address,
+      amount: parsedAmount
     })
 
-    const txHash = fakeTxHash()
+    const txHash = onchainResp?.tx || fakeTxHash()
 
-    await prisma.transaction.create({
-      data: {
-        userId,
-        amount: parsedAmount,
-        type: "MINT",
-        status: "completed",
-        fromAddress: "0x0000000000000000000000000000000000000000",
-        toAddress: address,
-        txHash,
-        note: `Minted e₹ ${parsedAmount}`
-      }
+    await prisma.$transaction(async (tx) => {
+      await tx.wallet.upsert({
+        where: { userId: normalizedUserId },
+        update: {},
+        create: { userId: normalizedUserId, balance: 0 }
+      })
+
+      const currentIssued = await getGlobalIssuedVolume(tx)
+      assertGlobalLedgerCap(currentIssued, parsedAmount)
+
+      await tx.wallet.update({
+        where: { userId: normalizedUserId },
+        data: { balance: { increment: parsedAmount } }
+      })
+
+      await tx.transaction.create({
+        data: {
+          userId: normalizedUserId,
+          amount: parsedAmount,
+          type: isDisburse ? "DISBURSE" : isMerchantPos ? "MERCHANT_POS" : "MINT",
+          status: "completed",
+          fromAddress: "0x0000000000000000000000000000000000000000",
+          toAddress: address,
+          txHash,
+          note: isDisburse
+            ? `Disbursed e₹ ${parsedAmount}`
+            : isMerchantPos
+              ? `Merchant POS charge e₹ ${parsedAmount}`
+              : `Minted e₹ ${parsedAmount}`
+        }
+      })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+
+    res.json({
+      tx: txHash,
+      from: "0x000...000",
+      to: address,
+      amount: parsedAmount.toString(),
+      status: "success",
+      mode: BLOCKCHAIN_MODE
     })
-
-    res.json({ tx: txHash, from: "0x000...000", to: address, amount, status: "success" })
   } catch (err) {
-    console.error("Mint error:", err)
-    res.status(500).json({ error: "Server error" })
+    routeError(res, "Mint error", err)
   }
 })
 
@@ -325,82 +479,114 @@ app.post("/blockchain/mint", async (req, res) => {
 app.post("/blockchain/transfer", async (req, res) => {
   try {
     const { fromUserId, toAddress, amount, note } = req.body
-    const parsedAmount = parseFloat(amount)
+    const normalizedFromUserId = toUserId(fromUserId, "fromUserId")
+    const normalizedToAddress = normalizeWalletAddress(toAddress)
+    const parsedAmount = toAmount(amount)
 
-    if (!fromUserId || !toAddress || isNaN(parsedAmount) || parsedAmount <= 0) {
-      return res.status(400).json({ error: "fromUserId, toAddress, and a valid amount are required" })
-    }
+    assertAmountWithinPerTxLimit(parsedAmount)
 
-    // Get sender wallet
-    const senderWallet = await prisma.wallet.findUnique({ where: { userId: fromUserId } })
-    if (!senderWallet) return res.status(404).json({ error: "Sender wallet not found" })
-    if (senderWallet.balance < parsedAmount) return res.status(400).json({ error: "Insufficient balance" })
-
-    const senderAddress = await ensureWalletAddress(fromUserId)
-
-    // Find receiver by wallet address (if they exist in the system)
-    const receiverUser = await prisma.user.findFirst({ where: { walletAddress: toAddress } })
-
-    // Deduct from sender
-    await prisma.wallet.update({
-      where: { userId: fromUserId },
-      data: { balance: { decrement: parsedAmount } }
-    })
-
-    // Credit receiver if they're in our system
-    if (receiverUser) {
-      await prisma.wallet.update({
-        where: { userId: receiverUser.id },
-        data: { balance: { increment: parsedAmount } }
-      })
-    }
-
-    const txHash = fakeTxHash()
     const timestamp = new Date().toISOString()
 
-    // Record transaction for sender
-    await prisma.transaction.create({
-      data: {
-        userId: fromUserId,
-        amount: parsedAmount,
-        type: "TRANSFER_OUT",
-        status: "completed",
-        fromAddress: senderAddress,
-        toAddress,
-        txHash,
-        note: note || ""
+    const transferResult = await prisma.$transaction(async (tx) => {
+      const senderWallet = await tx.wallet.findUnique({ where: { userId: normalizedFromUserId } })
+      if (!senderWallet) {
+        throw new ApiError(404, "Sender wallet not found")
       }
-    })
 
-    // Record transaction for receiver if in our system
-    if (receiverUser) {
-      await prisma.transaction.create({
+      const senderAddress = await ensureWalletAddress(normalizedFromUserId, tx)
+      if (senderAddress.toLowerCase() === normalizedToAddress) {
+        throw new ApiError(400, "Sender and receiver address cannot be the same")
+      }
+
+      const receiverUser = await tx.user.findFirst({
+        where: { walletAddress: normalizedToAddress }
+      })
+
+      if (!receiverUser && !ALLOW_EXTERNAL_TRANSFER) {
+        throw new ApiError(400, "Receiver wallet not found in system")
+      }
+
+      if (receiverUser && receiverUser.id === normalizedFromUserId) {
+        throw new ApiError(400, "Self transfer is not allowed")
+      }
+
+      if (receiverUser) {
+        await tx.wallet.upsert({
+          where: { userId: receiverUser.id },
+          update: {},
+          create: { userId: receiverUser.id, balance: 0 }
+        })
+      }
+
+      const debited = await tx.wallet.updateMany({
+        where: {
+          userId: normalizedFromUserId,
+          balance: { gte: parsedAmount }
+        },
+        data: { balance: { decrement: parsedAmount } }
+      })
+
+      if (debited.count !== 1) {
+        throw new ApiError(400, "Insufficient balance")
+      }
+
+      if (receiverUser) {
+        await tx.wallet.update({
+          where: { userId: receiverUser.id },
+          data: { balance: { increment: parsedAmount } }
+        })
+      }
+
+      const txHash = fakeTxHash()
+
+      await tx.transaction.create({
         data: {
-          userId: receiverUser.id,
+          userId: normalizedFromUserId,
           amount: parsedAmount,
-          type: "TRANSFER_IN",
+          type: "TRANSFER_OUT",
           status: "completed",
           fromAddress: senderAddress,
-          toAddress,
+          toAddress: normalizedToAddress,
           txHash,
           note: note || ""
         }
       })
-    }
 
-    console.log(`Transfer: ${parsedAmount} from user ${fromUserId} to ${toAddress}, tx: ${txHash}`)
+      if (receiverUser) {
+        await tx.transaction.create({
+          data: {
+            userId: receiverUser.id,
+            amount: parsedAmount,
+            type: "TRANSFER_IN",
+            status: "completed",
+            fromAddress: senderAddress,
+            toAddress: normalizedToAddress,
+            txHash,
+            note: note || ""
+          }
+        })
+      }
+
+      return {
+        txHash,
+        senderAddress,
+        receiverInSystem: Boolean(receiverUser)
+      }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+
+    console.log(`Transfer: ${parsedAmount} from user ${normalizedFromUserId} to ${normalizedToAddress}, tx: ${transferResult.txHash}`)
 
     res.json({
-      tx: txHash,
-      from: senderAddress,
-      to: toAddress,
-      amount,
+      tx: transferResult.txHash,
+      from: transferResult.senderAddress,
+      to: normalizedToAddress,
+      amount: parsedAmount.toString(),
       status: "success",
-      timestamp
+      timestamp,
+      internalSettlement: transferResult.receiverInSystem
     })
   } catch (err) {
-    console.error("Transfer error:", err)
-    res.status(500).json({ error: "Server error", details: err.message })
+    routeError(res, "Transfer error", err)
   }
 })
 
@@ -408,49 +594,61 @@ app.post("/blockchain/transfer", async (req, res) => {
 app.post("/blockchain/lock", async (req, res) => {
   try {
     const { userId, amount, unlockTime, documentCID, interestRate } = req.body
-    const parsedAmount = parseFloat(amount)
+    const normalizedUserId = toUserId(userId, "userId")
+    const parsedAmount = toAmount(amount)
+    const parsedUnlockTime = Number(unlockTime)
 
-    if (!userId || isNaN(parsedAmount) || !unlockTime) {
-      return res.status(400).json({ error: "userId, amount, and unlockTime are required" })
+    if (!Number.isInteger(parsedUnlockTime) || parsedUnlockTime <= Math.floor(Date.now() / 1000)) {
+      return res.status(400).json({ error: "unlockTime must be a future unix timestamp" })
     }
 
-    const wallet = await prisma.wallet.findUnique({ where: { userId } })
-    if (!wallet || wallet.balance < parsedAmount) {
-      return res.status(400).json({ error: "Insufficient balance" })
-    }
+    assertAmountWithinPerTxLimit(parsedAmount)
 
-    const address = await ensureWalletAddress(userId)
-
-    // Deduct locked amount from wallet
-    await prisma.wallet.update({
-      where: { userId },
-      data: { balance: { decrement: parsedAmount } }
+    const address = await ensureWalletAddress(normalizedUserId)
+    const onchainResp = await callOnchainApi("/lock", {
+      user: address,
+      amount: parsedAmount,
+      unlockTime: parsedUnlockTime,
+      documentCID
     })
-
-    const txHash = fakeTxHash()
+    const txHash = onchainResp?.tx || fakeTxHash()
 
     // Build note: encode rate and unlockTime so release can use them
-    const rate = interestRate != null ? parseFloat(interestRate) : 0
-    let note = `rate:${rate};until:${unlockTime}`
+    const parsedRate = interestRate != null ? Number(interestRate) : 0
+    const rate = Number.isFinite(parsedRate) ? parsedRate : 0
+    let note = `rate:${rate};until:${parsedUnlockTime}`
     if (documentCID) note += `;cid:${documentCID}`
 
-    await prisma.transaction.create({
-      data: {
-        userId,
-        amount: parsedAmount,
-        type: "LOCK",
-        status: "locked",
-        fromAddress: address,
-        toAddress: address,
-        txHash,
-        note
-      }
-    })
+    await prisma.$transaction(async (tx) => {
+      const debited = await tx.wallet.updateMany({
+        where: {
+          userId: normalizedUserId,
+          balance: { gte: parsedAmount }
+        },
+        data: { balance: { decrement: parsedAmount } }
+      })
 
-    res.json({ tx: txHash, status: "locked", unlockTime })
+      if (debited.count !== 1) {
+        throw new ApiError(400, "Insufficient balance")
+      }
+
+      await tx.transaction.create({
+        data: {
+          userId: normalizedUserId,
+          amount: parsedAmount,
+          type: "LOCK",
+          status: "locked",
+          fromAddress: address,
+          toAddress: address,
+          txHash,
+          note
+        }
+      })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+
+    res.json({ tx: txHash, status: "locked", unlockTime: parsedUnlockTime, mode: BLOCKCHAIN_MODE })
   } catch (err) {
-    console.error("Lock error:", err)
-    res.status(500).json({ error: "Server error" })
+    routeError(res, "Lock error", err)
   }
 })
 
@@ -458,88 +656,113 @@ app.post("/blockchain/lock", async (req, res) => {
 app.post("/blockchain/release", async (req, res) => {
   try {
     const { userId } = req.body
-    if (!userId) return res.status(400).json({ error: "userId is required" })
-
+    const normalizedUserId = toUserId(userId, "userId")
     const nowSecs = Math.floor(Date.now() / 1000)
+    const address = await ensureWalletAddress(normalizedUserId)
+    const onchainResp = await callOnchainApi("/release", { user: address })
+    const releaseTxHash = onchainResp?.tx || fakeTxHash()
 
-    // Find all locked transactions
-    const lockedTxs = await prisma.transaction.findMany({
-      where: { userId, type: "LOCK", status: "locked" }
-    })
-
-    let totalPrincipalReleased = 0
-    let totalInterestCredited = 0
-    const address = await ensureWalletAddress(userId)
-
-    for (const tx of lockedTxs) {
-      // Parse metadata from note  (format: "rate:15;until:1234567890;cid:...")
-      const noteParams = {}
-      tx.note.split(";").forEach(part => {
-        const [k, v] = part.split(":")
-        if (k && v !== undefined) noteParams[k.trim()] = v.trim()
+    const releaseSummary = await prisma.$transaction(async (tx) => {
+      const lockedTxs = await tx.transaction.findMany({
+        where: { userId: normalizedUserId, type: "LOCK", status: "locked" }
       })
 
-      const unlockTime = noteParams.until ? parseInt(noteParams.until) : 0
-      const rate = noteParams.rate ? parseFloat(noteParams.rate) : 0
+      let totalPrincipalReleased = 0
+      let totalInterestCredited = 0
+      const releasableLockIds = []
+      const interestTransactions = []
 
-      // Only release if expired
-      if (unlockTime > 0 && nowSecs < unlockTime) {
-        console.log(`Lock ${tx.id} not yet expired (unlocks at ${unlockTime}, now ${nowSecs})`)
-        continue  // skip — not ready yet
-      }
+      for (const lockTx of lockedTxs) {
+        const noteParams = {}
+        String(lockTx.note || "").split(";").forEach(part => {
+          const [k, v] = part.split(":")
+          if (k && v !== undefined) noteParams[k.trim()] = v.trim()
+        })
 
-      // Mark as released
-      await prisma.transaction.update({
-        where: { id: tx.id },
-        data: { status: "released" }
-      })
+        const unlockTime = noteParams.until ? parseInt(noteParams.until, 10) : 0
+        const rate = noteParams.rate ? parseFloat(noteParams.rate) : 0
 
-      // Credit principal back
-      totalPrincipalReleased += tx.amount
+        if (unlockTime > 0 && nowSecs < unlockTime) {
+          continue
+        }
 
-      // Calculate and credit interest if rate > 0
-      if (rate > 0) {
-        const interest = parseFloat((tx.amount * rate / 100).toFixed(6))
-        totalInterestCredited += interest
-        console.log(`Interest: e₹ ${interest} (${rate}% on ${tx.amount}) for lock ${tx.id}`)
+        releasableLockIds.push(lockTx.id)
+        totalPrincipalReleased += lockTx.amount
 
-        // Log an INTEREST_CREDIT transaction for transparency
-        await prisma.transaction.create({
-          data: {
-            userId,
+        if (Number.isFinite(rate) && rate > 0) {
+          const interest = parseFloat((lockTx.amount * rate / 100).toFixed(6))
+          totalInterestCredited += interest
+
+          interestTransactions.push({
+            userId: normalizedUserId,
             amount: interest,
             type: "INTEREST_CREDIT",
             status: "completed",
             fromAddress: "0x0000000000000000000000000000000000000000",
             toAddress: address,
             txHash: fakeTxHash(),
-            note: `Interest ${rate}% on e₹ ${tx.amount} lock #${tx.id}`
-          }
+            note: `Interest ${rate}% on e₹ ${lockTx.amount} lock #${lockTx.id}`
+          })
+        }
+      }
+
+      if (releasableLockIds.length === 0) {
+        return {
+          totalPrincipalReleased: 0,
+          totalInterestCredited: 0,
+          totalCredit: 0,
+          txHash: releaseTxHash
+        }
+      }
+
+      const currentIssued = await getGlobalIssuedVolume(tx)
+      assertGlobalLedgerCap(currentIssued, totalInterestCredited)
+
+      const released = await tx.transaction.updateMany({
+        where: {
+          id: { in: releasableLockIds },
+          userId: normalizedUserId,
+          type: "LOCK",
+          status: "locked"
+        },
+        data: { status: "released" }
+      })
+
+      if (released.count !== releasableLockIds.length) {
+        throw new ApiError(409, "Lock release conflict. Please retry")
+      }
+
+      if (interestTransactions.length > 0) {
+        await tx.transaction.createMany({
+          data: interestTransactions
         })
       }
-    }
 
-    const totalCredit = totalPrincipalReleased + totalInterestCredited
-
-    if (totalCredit > 0) {
-      await prisma.wallet.update({
-        where: { userId },
-        data: { balance: { increment: totalCredit } }
+      const totalCredit = totalPrincipalReleased + totalInterestCredited
+      await tx.wallet.upsert({
+        where: { userId: normalizedUserId },
+        update: { balance: { increment: totalCredit } },
+        create: { userId: normalizedUserId, balance: totalCredit }
       })
-    }
 
-    const txHash = fakeTxHash()
-    console.log(`Release: principal=${totalPrincipalReleased}, interest=${totalInterestCredited}, total=${totalCredit}`)
+      return {
+        totalPrincipalReleased,
+        totalInterestCredited,
+        totalCredit,
+        txHash: releaseTxHash
+      }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+
+    console.log(`Release: principal=${releaseSummary.totalPrincipalReleased}, interest=${releaseSummary.totalInterestCredited}, total=${releaseSummary.totalCredit}`)
     res.json({
-      tx: txHash,
+      tx: releaseSummary.txHash,
       status: "released",
-      principal: totalPrincipalReleased.toString(),
-      interest: totalInterestCredited.toString(),
-      total: totalCredit.toString()
+      principal: releaseSummary.totalPrincipalReleased.toString(),
+      interest: releaseSummary.totalInterestCredited.toString(),
+      total: releaseSummary.totalCredit.toString()
     })
   } catch (err) {
-    console.error("Release error:", err)
-    res.status(500).json({ error: "Server error" })
+    routeError(res, "Release error", err)
   }
 })
 
@@ -625,7 +848,11 @@ app.get("/blockchain/info", async (req, res) => {
     networkName: "eRupee CBDC Network",
     timestamp: Math.floor(Date.now() / 1000),
     gasPrice: "0",
-    contractAddress: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    contractAddress: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    mode: BLOCKCHAIN_MODE,
+    globalCap: GLOBAL_LEDGER_CAP.toString(),
+    allowExternalTransfer: ALLOW_EXTERNAL_TRANSFER,
+    onchainBackendUrl: BLOCKCHAIN_MODE === "onchain" ? ONCHAIN_BACKEND_URL : null
   })
 })
 

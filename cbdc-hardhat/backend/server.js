@@ -64,6 +64,19 @@ app.post("/lock", async (req, res) => {
   }
 });
 
+app.post("/release", async (req, res) => {
+  if (!contract) return res.status(500).json({ error: "Contract not configured" });
+  const { user } = req.body;
+  if (!user) return res.status(400).json({ error: "missing user" });
+  try {
+    const tx = await contract.releaseExpiredLocks(user);
+    await tx.wait();
+    res.json({ tx: tx.hash });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file || !req.file.buffer) {

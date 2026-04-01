@@ -76,6 +76,7 @@ export default function GovernmentPage() {
   const { user, balance, transactions, locks, refreshAll } = useWallet();
   const { theme } = useTheme();
   const isDark = theme === "dark";
+  const [schemes, setSchemes] = useState<SubsidyScheme[]>(SCHEMES);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [distributing, setDistributing] = useState<string | null>(null);
   const [disburseAmt, setDisburseAmt] = useState("");
@@ -85,13 +86,13 @@ export default function GovernmentPage() {
   const address = balance?.address || user?.walletAddress || "";
 
   const stats = useMemo(() => {
-    const mintTxs = transactions.filter(t => t.type === "mint");
-    const totalMinted = mintTxs.reduce((s, t) => s + t.amount, 0);
+    const disburseTxs = transactions.filter(t => t.type?.toUpperCase() === "DISBURSE");
+    const totalMinted = disburseTxs.reduce((s, t) => s + t.amount, 0);
     const lockCount = locks.length;
     const totalLocked = locks.reduce((s, l) => s + parseFloat(l.amount), 0);
-    const activeSchemes = SCHEMES.filter(s => s.status === "active").length;
-    return { totalMinted, lockCount, totalLocked, activeSchemes, mintTxs: mintTxs.length };
-  }, [transactions, locks]);
+    const activeSchemes = schemes.filter(s => s.status === "active").length;
+    return { totalMinted, lockCount, totalLocked, activeSchemes, mintTxs: disburseTxs.length };
+  }, [transactions, locks, schemes]);
 
   const restrictionIcon = (type: string) => {
     switch (type) {
@@ -128,7 +129,7 @@ export default function GovernmentPage() {
     setDisburseStatus("processing");
     setDisburseMsg("");
     try {
-      const res = await api.mint(user.id, disburseAmt || "1000");
+      const res = await api.mint(user.id, disburseAmt || "1000", "DISBURSE");
       setDisburseStatus("success");
       setDisburseMsg(`Disbursed ${fmtINR(parseFloat(disburseAmt || "1000"))} eINR — TX: ${res.tx.slice(0, 14)}...`);
       setDisburseAmt("");
@@ -139,6 +140,15 @@ export default function GovernmentPage() {
     } finally {
       setTimeout(() => { setDistributing(null); setDisburseStatus("idle"); }, 3000);
     }
+  };
+
+  const toggleSchemeStatus = (schemeId: string) => {
+    setSchemes(prev => prev.map((scheme) => {
+      if (scheme.id !== schemeId) return scheme;
+      if (scheme.status === "active") return { ...scheme, status: "paused" };
+      if (scheme.status === "paused") return { ...scheme, status: "active" };
+      return scheme;
+    }));
   };
 
   const overviewStats = [
@@ -179,7 +189,7 @@ export default function GovernmentPage() {
 
       {/* Scheme Cards */}
       <div className="space-y-4">
-        {SCHEMES.map(scheme => {
+        {schemes.map(scheme => {
           const isExpanded = expanded === scheme.id;
           return (
             <div key={scheme.id} className="card-hover overflow-hidden">
@@ -202,7 +212,16 @@ export default function GovernmentPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase ${schemeStatusColor(scheme.status)}`}>{scheme.status}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSchemeStatus(scheme.id);
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase ${schemeStatusColor(scheme.status)}`}
+                    >
+                      {scheme.status}
+                    </button>
                     {isExpanded ? <FiChevronUp className={isDark ? "text-slate-400" : "text-slate-500"} /> : <FiChevronDown className={isDark ? "text-slate-400" : "text-slate-500"} />}
                   </div>
                 </div>
@@ -279,11 +298,11 @@ export default function GovernmentPage() {
       </div>
 
       {/* Recent Disbursements */}
-      {transactions.filter(t => t.type === "mint").length > 0 && (
+      {transactions.filter(t => t.type?.toUpperCase() === "DISBURSE").length > 0 && (
         <div className="card-hover p-5">
           <h3 className={`font-semibold mb-4 ${isDark ? "text-white" : "text-slate-900"}`}>Recent Disbursements (Mint Events)</h3>
           <div className="space-y-2">
-            {transactions.filter(t => t.type === "mint").slice(0, 8).map(t => (
+            {transactions.filter(t => t.type?.toUpperCase() === "DISBURSE").slice(0, 8).map(t => (
               <div key={t.id} className={`flex items-center justify-between p-3 rounded-lg border ${isDark ? "bg-slate-800/30 border-slate-700/20" : "bg-slate-50 border-slate-200/60"}`}>
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-500 flex items-center justify-center">
@@ -312,7 +331,7 @@ export default function GovernmentPage() {
           <p className="text-emerald-500">// SubsidyDistributor.sol — Programmable Money Rules</p>
           <p><span className="text-blue-500">function</span> <span className={isDark ? "text-white" : "text-slate-900"}>distributeSubsidy</span>(address beneficiary, uint256 amount) {"{"}</p>
           <p className="pl-4"><span className="text-amber-500">require</span>(kycVerified[beneficiary], <span className="text-emerald-500">&quot;KYC not verified&quot;</span>);</p>
-          <p className="pl-4"><span className="text-amber-500">require</span>(isGeoFenced(beneficiary), <span className="text-emerald-500">&quot;Outside geo-fence&quot;</span>);</p>
+          <p className="pl-4"><span className="text-blue-500">uint256</span> radius = <span className="text-violet-500">50</span>; <span className="text-emerald-500">// km</span></p>
           <p className="pl-4">eRupee.mint(beneficiary, amount);</p>
           <p className="pl-4">tokenExpiry[beneficiary] = block.timestamp + <span className="text-violet-500">90 days</span>;</p>
           <p className="pl-4">usageRestriction[beneficiary] = schemeCategory;</p>

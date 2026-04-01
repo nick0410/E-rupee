@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { FiArrowLeft, FiSend, FiCheck, FiAlertTriangle, FiCopy, FiExternalLink } from "react-icons/fi";
+import { FiArrowLeft, FiSend, FiCheck, FiAlertTriangle, FiCopy, FiMaximize } from "react-icons/fi";
 import { useWallet } from "@/context/WalletContext";
 import { api } from "@/lib/api";
 import { formatINR } from "@/lib/utils";
+import QRScanner from "@/components/QRScanner";
 
 type Status = "idle" | "confirming" | "processing" | "success" | "error";
 
@@ -18,6 +19,7 @@ export default function SendPage() {
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const avail = balance ? parseFloat(balance.available) : 0;
   const parsedAmount = parseFloat(amount) || 0;
@@ -54,16 +56,58 @@ export default function SendPage() {
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const handleScan = (data: string) => {
+    try {
+      // Expecting URL like: erupee://pay?to=0x...&amount=50&note=abc
+      if (data.startsWith('erupee://pay')) {
+        const url = new URL(data);
+        const to = url.searchParams.get('to');
+        const amt = url.searchParams.get('amount');
+        const n = url.searchParams.get('note');
+        
+        if (to) setToAddress(to);
+        if (amt && amt !== '0') setAmount(amt);
+        if (n) setNote(n);
+      } else if (/^https?:\/\//i.test(data) || /^localhost[:/]/i.test(data)) {
+        const link = /^https?:\/\//i.test(data) ? data : `http://${data}`;
+        window.location.href = link;
+        return;
+      } else if (data.startsWith('0x')) {
+        setToAddress(data);
+      }
+      setShowScanner(false);
+    } catch {
+      // Just fallback to setting data as address if URL parsing fails
+      setToAddress(data);
+      setShowScanner(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-[600px] mx-auto">
-      <div className="flex items-center gap-3">
-        <Link href="/dashboard/payments" className="w-9 h-9 rounded-lg bg-slate-800/60 border border-slate-700/30 flex items-center justify-center text-slate-400 hover:text-white transition-colors">
-          <FiArrowLeft size={16} />
-        </Link>
-        <div>
-          <h1 className="text-xl font-bold text-white">Send eINR</h1>
-          <p className="text-slate-400 text-xs">Real on-chain P2P transfer</p>
+      {showScanner && (
+        <QRScanner 
+          onScan={handleScan} 
+          onClose={() => setShowScanner(false)} 
+        />
+      )}
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard/payments" className="w-9 h-9 rounded-lg bg-slate-800/60 border border-slate-700/30 flex items-center justify-center text-slate-400 hover:text-white transition-colors">
+            <FiArrowLeft size={16} />
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold text-white">Send eINR</h1>
+            <p className="text-slate-400 text-xs">Real on-chain P2P transfer</p>
+          </div>
         </div>
+        <button 
+          onClick={() => setShowScanner(true)}
+          className="flex items-center gap-2 px-3 py-2 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/30 rounded-lg text-sm font-medium transition-all"
+        >
+          <FiMaximize /> Scan QR
+        </button>
       </div>
 
       {/* Success State */}

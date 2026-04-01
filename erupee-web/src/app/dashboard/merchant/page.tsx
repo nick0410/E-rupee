@@ -8,6 +8,7 @@ import {
 import { useWallet } from "@/context/WalletContext";
 import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/lib/api";
+import { notifyPaymentReceived } from "@/lib/paymentNotifications";
 
 export default function MerchantPage() {
   const { user, balance, transactions, refreshAll } = useWallet();
@@ -18,18 +19,19 @@ export default function MerchantPage() {
   const [posResult, setPosResult] = useState<{ success: boolean; msg: string; hash?: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const address = balance?.address || user?.walletAddress || "";
-  const merchantTxs = transactions.filter(t => t.type === 'TRANSFER' && t.toAddress?.toLowerCase() === address.toLowerCase());
+  const merchantTxs = transactions.filter(t => t.type?.toUpperCase() === 'MERCHANT_POS');
   const totalRevenue = merchantTxs.reduce((s, t) => s + t.amount, 0);
+  const avgTicket = merchantTxs.length > 0 ? totalRevenue / merchantTxs.length : 0;
 
   const handlePOS = async () => {
     if (!posAmount || parseFloat(posAmount) <= 0) return;
     setPosProcessing(true);
     setPosResult(null);
     try {
-      const res = await api.mint(user!.id, posAmount);
+      const res = await api.mint(user!.id, posAmount, "MERCHANT_POS");
       await refreshAll();
-      setPosResult({ success: true, msg: `Payment of ₹${posAmount} received!`, hash: res.txHash });
+      setPosResult({ success: true, msg: `Payment of ₹${posAmount} received!`, hash: res.tx });
+      notifyPaymentReceived(Number(posAmount), res.tx);
       setPosAmount('');
     } catch (err: any) {
       setPosResult({ success: false, msg: err.message || 'Payment failed' });
@@ -40,7 +42,7 @@ export default function MerchantPage() {
   const statCards = [
     { icon: <FiDollarSign className="text-violet-500 mb-2" size={18} />, value: `₹${totalRevenue.toLocaleString()}`, label: "Total Revenue" },
     { icon: <FiCreditCard className="text-blue-500 mb-2" size={18} />, value: merchantTxs.length, label: "Transactions" },
-    { icon: <FiShoppingBag className="text-emerald-500 mb-2" size={18} />, value: `₹${merchantTxs.length > 0 ? Math.round(totalRevenue / merchantTxs.length).toLocaleString() : '0'}`, label: "Avg Ticket" },
+    { icon: <FiShoppingBag className="text-emerald-500 mb-2" size={18} />, value: `₹${avgTicket.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`, label: "Avg Ticket" },
     { icon: <FiCheck className="text-amber-500 mb-2" size={18} />, value: `₹${(balance?.available ?? 0).toLocaleString()}`, label: "Balance" },
   ];
 
