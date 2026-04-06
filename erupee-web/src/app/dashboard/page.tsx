@@ -26,6 +26,8 @@ export default function DashboardPage() {
   const bal = balance ? parseFloat(balance.balance) : 0;
   const avail = balance ? parseFloat(balance.available) : 0;
   const locked = balance ? parseFloat(balance.locked) : 0;
+  const computedTotal = avail + locked;
+  const totalHoldings = Math.abs(bal - computedTotal) < 0.01 ? bal : computedTotal;
 
   const quickActions = [
     { label: "Send Money", desc: "P2P transfer to any wallet", href: "/dashboard/payments/send", icon: FiSend, color: "from-blue-600 to-blue-500" },
@@ -62,12 +64,12 @@ export default function DashboardPage() {
       {/* Balance Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card-hover p-6 stat-glow border-l-4 border-l-blue-500">
-          <p className={`text-xs uppercase tracking-wider mb-1 ${isDark ? "text-slate-500" : "text-slate-400"}`}>Total Balance</p>
-          <p className={`text-3xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{loading ? "..." : formatINR(bal)}</p>
-          <p className={`text-xs mt-1 ${isDark ? "text-slate-600" : "text-slate-400"}`}>On-chain eINR balance</p>
+          <p className={`text-xs uppercase tracking-wider mb-1 ${isDark ? "text-slate-500" : "text-slate-400"}`}>Total Holdings</p>
+          <p className={`text-3xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{loading ? "..." : formatINR(totalHoldings)}</p>
+          <p className={`text-xs mt-1 ${isDark ? "text-slate-600" : "text-slate-400"}`}>Available + Locked</p>
         </div>
         <div className="card-hover p-6 stat-glow border-l-4 border-l-emerald-500">
-          <p className={`text-xs uppercase tracking-wider mb-1 ${isDark ? "text-slate-500" : "text-slate-400"}`}>Available</p>
+          <p className={`text-xs uppercase tracking-wider mb-1 ${isDark ? "text-slate-500" : "text-slate-400"}`}>Spendable</p>
           <p className="text-emerald-500 text-3xl font-bold">{loading ? "..." : formatINR(avail)}</p>
           <p className={`text-xs mt-1 ${isDark ? "text-slate-600" : "text-slate-400"}`}>Ready to spend or transfer</p>
         </div>
