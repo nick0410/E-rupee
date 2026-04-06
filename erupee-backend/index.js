@@ -396,11 +396,13 @@ app.get("/blockchain/balance/:userId", async (req, res) => {
       where: { userId, type: "LOCK", status: "locked" }
     })
     const lockedBalance = lockedTxs.reduce((sum, tx) => sum + tx.amount, 0)
-    const available = Math.max(0, wallet.balance - lockedBalance)
+    // wallet.balance stores currently spendable amount because lock/transfer debit it.
+    const available = Math.max(0, wallet.balance)
+    const totalBalance = available + lockedBalance
 
     res.json({
       address,
-      balance: wallet.balance.toString(),
+      balance: totalBalance.toString(),
       locked: lockedBalance.toString(),
       available: available.toString()
     })
