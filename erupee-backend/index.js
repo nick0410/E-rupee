@@ -28,10 +28,78 @@ app.use(express.json())
 
 // Add request logging middleware
 app.use((req, res, next) => {
+  let safeBody = req.body
+  if (req.body && typeof req.body === "object" && !Array.isArray(req.body)) {
+    safeBody = { ...req.body }
+    if ("password" in safeBody) safeBody.password = "[REDACTED]"
+    if ("otp" in safeBody) safeBody.otp = "[REDACTED]"
+    if ("token" in safeBody) safeBody.token = "[REDACTED]"
+  }
+
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`)
-  console.log('Body:', req.body)
+  console.log('Body:', safeBody)
   next()
 })
+
+function inferIdentifierType(identifier) {
+  const value = String(identifier || "").trim()
+  if (!value) return "unknown"
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "email"
+  if (/^\+?[0-9]{8,15}$/.test(value)) return "phone"
+  return "unknown"
+}
+
+function getClientIp(req) {
+  const forwarded = req.get("x-forwarded-for")
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim()
+    if (first) return first
+  }
+
+  return req.ip || req.socket?.remoteAddress || null
+}
+
+function buildLoginAuditData(req, payload) {
+  const identifier = String(payload.identifier || "").trim() || "unknown"
+  const metadata = {
+    host: req.get("host") || null,
+    acceptLanguage: req.get("accept-language") || null,
+    secChUa: req.get("sec-ch-ua") || null,
+    secChUaMobile: req.get("sec-ch-ua-mobile") || null,
+    secChUaPlatform: req.get("sec-ch-ua-platform") || null,
+    ...payload.metadata,
+  }
+
+  return {
+    userId: payload.userId ?? null,
+    identifier,
+    identifierType: payload.identifierType || inferIdentifierType(identifier),
+    outcome: String(payload.outcome || "UNKNOWN").toUpperCase(),
+    errorMessage: payload.errorMessage || null,
+    ipAddress: getClientIp(req),
+    forwardedFor: req.get("x-forwarded-for") || null,
+    userAgent: req.get("user-agent") || null,
+    referer: req.get("referer") || null,
+    origin: req.get("origin") || null,
+    requestMethod: req.method,
+    requestPath: req.path,
+    metadata,
+  }
+}
+
+async function writeLoginAudit(req, payload) {
+  const data = buildLoginAuditData(req, payload)
+  try {
+    await prisma.loginAudit.create({ data })
+  } catch (error) {
+    console.error("Login audit logging failed:", error)
+  }
+}
+
+function toPositiveInt(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
 
 app.get("/", (req, res) => {
   res.json({
@@ -102,6 +170,8 @@ app.post("/register", async (req, res) => {
       data: { userId: user.id, balance: 0 }
     })
 
+    const walletAddress = await ensureWalletAddress(user.id)
+
     console.log("Wallet created successfully for user:", user.id)
 
     res.status(201).json({
@@ -111,7 +181,8 @@ app.post("/register", async (req, res) => {
         name: user.name,
         email: user.email,
         phone: user.phone,
-        state: user.state
+        state: user.state,
+        walletAddress
       }
     })
 
@@ -126,11 +197,18 @@ app.post("/register", async (req, res) => {
 
 app.post("/login", async (req, res) => {
   const { identifier, password } = req.body
+  const normalizedIdentifier = String(identifier || "").trim()
 
   try {
-    console.log("Login request received for:", identifier)
+    console.log("Login request received for:", normalizedIdentifier)
 
-    if (!identifier || !password) {
+    if (!normalizedIdentifier || !password) {
+      await writeLoginAudit(req, {
+        identifier: normalizedIdentifier,
+        outcome: "INVALID_REQUEST",
+        errorMessage: "identifier_or_password_missing",
+      })
+
       return res.status(400).json({
         error: "Email/Phone and password are required"
       })
@@ -139,25 +217,54 @@ app.post("/login", async (req, res) => {
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { email: identifier },
-          { phone: identifier }
+          { email: normalizedIdentifier },
+          { phone: normalizedIdentifier }
         ]
       }
     })
 
     if (!user) {
+      await writeLoginAudit(req, {
+        identifier: normalizedIdentifier,
+        outcome: "USER_NOT_FOUND",
+        errorMessage: "user_not_found",
+      })
+
       return res.status(404).json({
         error: "User not found"
       })
     }
 
     if (user.password !== password) {
+      await writeLoginAudit(req, {
+        userId: user.id,
+        identifier: normalizedIdentifier,
+        outcome: "INVALID_PASSWORD",
+        errorMessage: "invalid_password",
+      })
+
       return res.status(401).json({
         error: "Invalid password"
       })
     }
 
     console.log("Login successful for user:", user.id)
+    const walletAddress = user.walletAddress || await ensureWalletAddress(user.id)
+
+    await writeLoginAudit(req, {
+      userId: user.id,
+      identifier: normalizedIdentifier,
+      outcome: "SUCCESS",
+      metadata: {
+        userSnapshot: {
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          state: user.state,
+          walletAddress,
+        },
+      },
+    })
 
     res.json({
       message: "Login successful",
@@ -167,12 +274,19 @@ app.post("/login", async (req, res) => {
         email: user.email,
         phone: user.phone,
         state: user.state,
-        walletAddress: user.walletAddress
+        walletAddress
       }
     })
 
   } catch (err) {
     console.error("Login error:", err)
+
+    await writeLoginAudit(req, {
+      identifier: normalizedIdentifier,
+      outcome: "SERVER_ERROR",
+      errorMessage: err?.message ? String(err.message).slice(0, 300) : "unknown_error",
+    })
+
     res.status(500).json({
       error: "Server error",
       details: process.env.NODE_ENV === 'development' ? err.message : undefined
@@ -193,7 +307,17 @@ app.get("/users", async (req, res) => {
         walletAddress: true
       }
     })
-    res.json({ users })
+
+    const usersWithWalletAddress = await Promise.all(users.map(async (item) => {
+      if (item.walletAddress) return item
+      const walletAddress = await ensureWalletAddress(item.id)
+      return {
+        ...item,
+        walletAddress,
+      }
+    }))
+
+    res.json({ users: usersWithWalletAddress })
   } catch (err) {
     console.error("Get users error:", err)
     res.status(500).json({ error: "Server error" })
@@ -230,6 +354,105 @@ app.put("/users/:userId", async (req, res) => {
     })
   } catch (err) {
     console.error("Update profile error:", err)
+    res.status(500).json({ error: "Server error" })
+  }
+})
+
+// GET /audit/login-events
+app.get("/audit/login-events", async (req, res) => {
+  try {
+    const page = toPositiveInt(req.query.page, 1)
+    const limit = Math.min(100, toPositiveInt(req.query.limit, 25))
+    const userId = req.query.userId ? toPositiveInt(req.query.userId, 0) : 0
+    const identifier = String(req.query.identifier || "").trim()
+    const outcome = String(req.query.outcome || "").trim().toUpperCase()
+
+    const where = {}
+    if (userId > 0) where.userId = userId
+    if (identifier) {
+      where.identifier = {
+        contains: identifier,
+        mode: "insensitive",
+      }
+    }
+    if (outcome) where.outcome = outcome
+
+    const [total, events, groupedOutcome] = await Promise.all([
+      prisma.loginAudit.count({ where }),
+      prisma.loginAudit.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          User: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              state: true,
+              walletAddress: true,
+            },
+          },
+        },
+      }),
+      prisma.loginAudit.groupBy({
+        by: ["outcome"],
+        where,
+        _count: { _all: true },
+      }),
+    ])
+
+    const byOutcome = {}
+    for (const row of groupedOutcome) {
+      byOutcome[row.outcome] = row._count._all
+    }
+
+    const successCount = byOutcome.SUCCESS || 0
+    const failedCount = Math.max(0, total - successCount)
+
+    res.json({
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      summary: {
+        successCount,
+        failedCount,
+        successRate: total > 0 ? Number(((successCount / total) * 100).toFixed(2)) : 0,
+        byOutcome,
+      },
+      events: events.map((event) => ({
+        id: event.id,
+        createdAt: event.createdAt.toISOString(),
+        userId: event.userId,
+        identifier: event.identifier,
+        identifierType: event.identifierType,
+        outcome: event.outcome,
+        errorMessage: event.errorMessage,
+        ipAddress: event.ipAddress,
+        forwardedFor: event.forwardedFor,
+        userAgent: event.userAgent,
+        referer: event.referer,
+        origin: event.origin,
+        requestMethod: event.requestMethod,
+        requestPath: event.requestPath,
+        metadata: event.metadata,
+        user: event.User
+          ? {
+            id: event.User.id,
+            name: event.User.name,
+            email: event.User.email,
+            phone: event.User.phone,
+            state: event.User.state,
+            walletAddress: event.User.walletAddress,
+          }
+          : null,
+      })),
+    })
+  } catch (err) {
+    console.error("Login audit fetch error:", err)
     res.status(500).json({ error: "Server error" })
   }
 })
@@ -501,7 +724,12 @@ app.post("/blockchain/transfer", async (req, res) => {
       }
 
       const receiverUser = await tx.user.findFirst({
-        where: { walletAddress: normalizedToAddress }
+        where: {
+          walletAddress: {
+            equals: normalizedToAddress,
+            mode: "insensitive"
+          }
+        }
       })
 
       if (!receiverUser && !ALLOW_EXTERNAL_TRANSFER) {

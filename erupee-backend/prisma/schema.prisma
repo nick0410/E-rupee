@@ -20,6 +20,7 @@ model User {
   walletAddress String?       @unique
   
   Investment    Investment[]
+  LoginAudit    LoginAudit[]
   Wallet        Wallet?
   Transaction   Transaction[]
 }
@@ -53,4 +54,28 @@ model Investment {
   
   userId    Int
   User      User   @relation(fields: [userId], references: [id])
+}
+
+model LoginAudit {
+  id              Int       @id @default(autoincrement())
+  createdAt       DateTime  @default(now())
+  userId          Int?
+  identifier      String
+  identifierType  String    @default("unknown")
+  outcome         String
+  errorMessage    String?
+  ipAddress       String?
+  forwardedFor    String?
+  userAgent       String?
+  referer         String?
+  origin          String?
+  requestMethod   String
+  requestPath     String
+  metadata        Json?
+  User            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([outcome])
+  @@index([identifier])
 }

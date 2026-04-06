@@ -86,6 +86,48 @@ export interface UsersListResponse {
   users: UserData[];
 }
 
+export interface LoginAuditUser {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  state: string;
+  walletAddress: string | null;
+}
+
+export interface LoginAuditEvent {
+  id: number;
+  createdAt: string;
+  userId: number | null;
+  identifier: string;
+  identifierType: string;
+  outcome: string;
+  errorMessage: string | null;
+  ipAddress: string | null;
+  forwardedFor: string | null;
+  userAgent: string | null;
+  referer: string | null;
+  origin: string | null;
+  requestMethod: string;
+  requestPath: string;
+  metadata: Record<string, unknown> | null;
+  user: LoginAuditUser | null;
+}
+
+export interface LoginAuditResponse {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  summary: {
+    successCount: number;
+    failedCount: number;
+    successRate: number;
+    byOutcome: Record<string, number>;
+  };
+  events: LoginAuditEvent[];
+}
+
 // ── API Functions ──
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -155,6 +197,25 @@ export const api = {
   // Users
   getUsers: () =>
     apiFetch<UsersListResponse>("/users"),
+
+  // Login audit
+  getLoginAudit: (params?: {
+    page?: number;
+    limit?: number;
+    userId?: number;
+    identifier?: string;
+    outcome?: string;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.page) search.set("page", String(params.page));
+    if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.userId) search.set("userId", String(params.userId));
+    if (params?.identifier) search.set("identifier", params.identifier);
+    if (params?.outcome) search.set("outcome", params.outcome);
+
+    const query = search.toString();
+    return apiFetch<LoginAuditResponse>(`/audit/login-events${query ? `?${query}` : ""}`);
+  },
 
   // Update Profile
   updateProfile: (userId: number, data: { name?: string; email?: string; phone?: string; state?: string; pan?: string }) =>

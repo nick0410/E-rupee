@@ -6,7 +6,7 @@ import { useState } from "react";
 import {
   FiHome, FiSend, FiList, FiShoppingBag, FiGlobe, FiCode,
   FiBox, FiShield, FiBarChart2, FiSettings, FiLogOut, FiChevronLeft,
-  FiChevronRight, FiZap,
+  FiChevronRight, FiZap, FiActivity,
 } from "react-icons/fi";
 import { useTheme } from "@/context/ThemeContext";
 
@@ -22,6 +22,7 @@ const NAV = [
     { name: "Merchant POS", href: "/dashboard/merchant", icon: FiShoppingBag },
     { name: "Government", href: "/dashboard/government", icon: FiGlobe },
     { name: "Smart Contracts", href: "/dashboard/contracts", icon: FiCode },
+    { name: "Login Audit", href: "/dashboard/login-audit", icon: FiActivity },
   ]},
 ];
 

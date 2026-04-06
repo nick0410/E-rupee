@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { FiSearch, FiBell, FiUser, FiChevronRight, FiCamera, FiTrash2, FiBox, FiBarChart2, FiPieChart, FiSettings } from "react-icons/fi";
+import { FiSearch, FiBell, FiUser, FiChevronRight, FiCamera, FiTrash2, FiBox, FiBarChart2, FiPieChart, FiSettings, FiActivity } from "react-icons/fi";
 import BlockchainIcon from "./BlockchainIcon";
 import { useTheme } from "@/context/ThemeContext";
 import { clearPaymentAlerts, getPaymentAlerts, requestNotificationPermission, subscribePaymentAlerts, type PaymentAlert } from "@/lib/paymentNotifications";
@@ -12,6 +12,7 @@ const SYSTEM_MENU = [
   { name: "Blockchain", href: "/dashboard/blockchain", icon: FiBox },
   { name: "Analytics", href: "/dashboard/analytics", icon: FiBarChart2 },
   { name: "Investments", href: "/dashboard/investments", icon: FiPieChart },
+  { name: "Login Audit", href: "/dashboard/login-audit", icon: FiActivity },
   { name: "Settings", href: "/dashboard/settings", icon: FiSettings },
 ];
 
@@ -25,6 +26,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/blockchain": "Blockchain Explorer",
   "/dashboard/analytics": "Analytics",
   "/dashboard/investments": "Investments",
+  "/dashboard/login-audit": "Login Audit",
   "/dashboard/settings": "Settings",
 };
 

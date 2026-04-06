@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { FiArrowLeft, FiSend, FiCheck, FiAlertTriangle, FiCopy, FiMaximize } from "react-icons/fi";
 import { useWallet } from "@/context/WalletContext";
@@ -9,6 +9,12 @@ import { formatINR } from "@/lib/utils";
 import QRScanner from "@/components/QRScanner";
 
 type Status = "idle" | "confirming" | "processing" | "success" | "error";
+
+type RecipientOption = {
+  id: number;
+  name: string;
+  walletAddress: string;
+};
 
 export default function SendPage() {
   const { user, balance, refreshAll } = useWallet();
@@ -20,10 +26,47 @@ export default function SendPage() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [recipients, setRecipients] = useState<RecipientOption[]>([]);
+  const [loadingRecipients, setLoadingRecipients] = useState(false);
 
   const avail = balance ? parseFloat(balance.available) : 0;
   const parsedAmount = parseFloat(amount) || 0;
-  const isValid = toAddress.startsWith("0x") && toAddress.length >= 10 && parsedAmount > 0 && parsedAmount <= avail;
+  const normalizedToAddress = toAddress.trim();
+  const isAddressFormatValid = /^0x[a-fA-F0-9]{40}$/.test(normalizedToAddress);
+  const isValid = isAddressFormatValid && parsedAmount > 0 && parsedAmount <= avail;
+
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+
+    const loadRecipients = async () => {
+      setLoadingRecipients(true);
+      try {
+        const response = await api.getUsers();
+        if (cancelled) return;
+
+        const options = response.users
+          .filter((item) => item.id !== user.id && Boolean(item.walletAddress))
+          .map((item) => ({
+            id: item.id,
+            name: item.name,
+            walletAddress: item.walletAddress,
+          }));
+
+        setRecipients(options);
+      } catch {
+        if (!cancelled) setRecipients([]);
+      } finally {
+        if (!cancelled) setLoadingRecipients(false);
+      }
+    };
+
+    void loadRecipients();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const handleConfirm = () => {
     if (!isValid) return;
@@ -35,7 +78,7 @@ export default function SendPage() {
     setStatus("processing");
     setError("");
     try {
-      const res = await api.transfer(user.id, toAddress, amount, note);
+      const res = await api.transfer(user.id, normalizedToAddress, amount, note);
       setTxHash(res.tx);
       setStatus("success");
       await refreshAll();
@@ -73,7 +116,7 @@ export default function SendPage() {
         window.location.href = link;
         return;
       } else if (data.startsWith('0x')) {
-        setToAddress(data);
+        setToAddress(data.trim());
       }
       setShowScanner(false);
     } catch {
@@ -118,7 +161,7 @@ export default function SendPage() {
           </div>
           <div>
             <h2 className="text-white text-xl font-bold">Transfer Successful!</h2>
-            <p className="text-slate-400 text-sm mt-1">₹{parsedAmount.toLocaleString('en-IN')} sent to {toAddress.slice(0, 8)}...{toAddress.slice(-6)}</p>
+            <p className="text-slate-400 text-sm mt-1">₹{parsedAmount.toLocaleString('en-IN')} sent to {normalizedToAddress.slice(0, 8)}...{normalizedToAddress.slice(-6)}</p>
           </div>
           <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/30">
             <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-1">Transaction Hash</p>
@@ -161,7 +204,7 @@ export default function SendPage() {
           <div className="space-y-3">
             <div className="flex justify-between py-2 border-b border-slate-800/50">
               <span className="text-slate-500 text-sm">To</span>
-              <span className="text-white text-sm font-mono">{toAddress.slice(0, 10)}...{toAddress.slice(-6)}</span>
+              <span className="text-white text-sm font-mono">{normalizedToAddress.slice(0, 10)}...{normalizedToAddress.slice(-6)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-slate-800/50">
               <span className="text-slate-500 text-sm">Amount</span>
@@ -212,12 +255,33 @@ export default function SendPage() {
 
           <div className="card-hover p-6 space-y-5">
             <div>
+              <label className="text-slate-400 text-xs uppercase tracking-wider mb-2 block">Quick Select User</label>
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) setToAddress(e.target.value);
+                }}
+                className="w-full px-4 py-3 rounded-xl bg-slate-800/60 border border-slate-700/30 text-white text-sm focus:outline-none focus:border-blue-500/50 transition-colors"
+              >
+                <option value="">Select recipient from active users</option>
+                {recipients.map((recipient) => (
+                  <option key={recipient.id} value={recipient.walletAddress}>
+                    {recipient.name} ({recipient.walletAddress.slice(0, 8)}...{recipient.walletAddress.slice(-6)})
+                  </option>
+                ))}
+              </select>
+              <p className="text-slate-500 text-[11px] mt-1">
+                {loadingRecipients ? "Loading users..." : `${recipients.length} recipient(s) available`}
+              </p>
+            </div>
+
+            <div>
               <label className="text-slate-400 text-xs uppercase tracking-wider mb-2 block">Recipient Wallet Address *</label>
               <input value={toAddress} onChange={e => setToAddress(e.target.value)}
                 placeholder="0x1234...abcd"
                 className="w-full px-4 py-3 rounded-xl bg-slate-800/60 border border-slate-700/30 text-white text-sm font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 transition-colors" />
-              {toAddress && !toAddress.startsWith("0x") && (
-                <p className="text-red-400 text-xs mt-1">Address must start with 0x</p>
+              {normalizedToAddress && !isAddressFormatValid && (
+                <p className="text-red-400 text-xs mt-1">Enter a valid 42-character wallet address</p>
               )}
             </div>
 
