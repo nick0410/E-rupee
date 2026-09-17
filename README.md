@@ -164,5 +164,3 @@ Contributors:-
 
 Deployment Link:- https://erupee-web.vercel.app/
 github Link :- https://github.com/nick0410/E-rupee
-
-THANK YOU SOURABH SIR !! FOR YOUR APPRECIATION . 
